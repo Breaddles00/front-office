@@ -3733,11 +3733,11 @@ function addSt(p, k, v, G) { if (!p || p.ghost || !v)
     (G[p.id] = G[p.id] || { p, s: {} }).s[k] = (G[p.id].s[k] || 0) + v;
 } }
 function driveSim(O, Dd, homeAdj, wx, rv) {
-    const d = O.off - Dd.def + homeAdj + (O.chem - 60) / 8 - (Dd.chem - 60) / 14 - ((Dd.p || 60) - 70) * 0.05 + gauss() * 3.2 * (1 + (rv || 0) / 250);
+    const d = O.off - Dd.def + homeAdj + (O.chem - 60) / 8 - (Dd.chem - 60) / 14 - ((Dd.p || 60) - 70) * 0.05 + gauss() * 5.6 * (1 + (rv || 0) / 250);
     const n = ri(10, 12);
-    let td = 0, fg = 0, int = 0, fum = 0, miss = 0;
+    let td = 0, fg = 0, int = 0, fum = 0, miss = 0, xpm = 0, xpa = 0;
     const fx = wx && wx.fx || { score: 0, kick: 0, fum: 1 };
-    const pTD = clamp(0.215 + d * 0.0075 - fx.score * 0.7, 0.06, 0.42), pFG = clamp((0.15 + (O.k - 75) * 0.003) * (1 - Math.max(0, fx.kick) * 0.01), 0.06, 0.24), pTO = clamp(0.11 - d * 0.003 + (fx.fum - 1) * 0.03, 0.04, 0.21);
+    const pTD = clamp(0.215 + d * 0.0065 - fx.score * 0.7, 0.06, 0.4), pFG = clamp((0.15 + (O.k - 75) * 0.003) * (1 - Math.max(0, fx.kick) * 0.01), 0.06, 0.24), pTO = clamp(0.11 - d * 0.003 + (fx.fum - 1) * 0.03, 0.04, 0.21);
     for (let i = 0; i < n; i++) {
         const r = rnd();
         if (r < pTD)
@@ -3756,58 +3756,122 @@ function driveSim(O, Dd, homeAdj, wx, rv) {
         }
     }
     let pts = fg * 3;
-    for (let i = 0; i < td; i++)
-        pts += rnd() < 0.95 ? 7 : 6;
-    return { d, td, fg, int, fum, pts };
+    for (let i = 0; i < td; i++) {
+        xpa++;
+        if (rnd() < 0.95) {
+            xpm++;
+            pts += 7;
+        }
+        else
+            pts += 6;
+    }
+    // drives that end without points or a turnover: mostly punts, plus the odd turnover on downs or end of half
+    const punts = Math.max(0, n - td - fg - miss - int - fum - 1 - (rnd() < 0.55 ? 1 : 0));
+    return { d, n, td, fg, int, fum, miss, xpm, xpa, punts, pts };
+}
+const healthy = (arr, i) => (arr || []).filter(p => !p.inj && !p.ghost)[i] || null;
+// Split a total across players by weight, rounding so the parts add back up.
+function splitInt(total, ws) {
+    const tw = ws.reduce((a, b) => a + b, 0) || 1, raw = ws.map(w => total * w / tw), out = raw.map(Math.floor);
+    let left = total - out.reduce((a, b) => a + b, 0);
+    raw.map((x, i) => [x - Math.floor(x), i]).sort((a, b) => b[0] - a[0]).forEach(([, i]) => { if (left > 0) {
+        out[i]++;
+        left--;
+    } });
+    return out;
 }
 function offStats(O, Dd, r, G) {
-    const qb = O.QB[0];
+    const D = O.D || {};
+    const qb1 = O.QB[0], qb2 = healthy(D.QB, 1);
+    const margin = r.pts - (r.opp || 0);
     let ptd = 0, rtd = 0;
     for (let i = 0; i < r.td; i++) {
-        if (rnd() < 0.56 + (eff(qb) - 75) * 0.004)
+        if (rnd() < 0.56 + (eff(qb1) - 75) * 0.004)
             ptd++;
         else
             rtd++;
     }
-    const py = Math.round(clamp(205 + r.d * 4.5 + gauss() * 55, 40, 520)), ry = Math.round(clamp(105 + r.d * 2 + gauss() * 35, 10, 280));
-    addSt(qb, 'py', py, G);
-    addSt(qb, 'ptd', ptd, G);
-    addSt(qb, 'pint', r.int, G);
-    const recv = [O.WR[0], O.WR[1], O.WR[2], O.TE[0], O.RB[0]];
-    const base = [.27, .2, .13, .18, .1];
-    const ws = recv.map((p, i) => base[i] * Math.pow(eff(p) / 75, 2) * rf(0.5, 1.5));
-    const tw = ws.reduce((a, b) => a + b, 0);
-    recv.forEach((p, i) => { const y = Math.round(py * ws[i] / tw); addSt(p, 'recy', y, G); addSt(p, 'rec', Math.max(y > 0 ? 1 : 0, Math.round(y / rf(9, 14))), G); });
+    // volume follows the game script: teams that trail throw, teams that lead run
+    const att = Math.round(clamp(34 - margin * 0.22 + gauss() * 5, 18, 58));
+    const car = Math.round(clamp(26 + margin * 0.22 + gauss() * 4, 12, 44));
+    const cmpP = clamp(0.63 + (eff(qb1) - 75) * 0.0035 + r.d * 0.002 + gauss() * 0.06, 0.42, 0.84);
+    const cmp = Math.min(att, Math.round(att * cmpP));
+    const ypa = clamp(6.4 + r.d * 0.045 + (eff(qb1) - 75) * 0.02 + (ptd - 1.4) * 0.35 + (cmpP - 0.63) * 5 + gauss() * 1.0, 3.2, 11);
+    const py = Math.max(0, Math.round(att * ypa));
+    const ypr = clamp(4.3 + r.d * 0.035 + (rtd - 0.8) * 0.3 + gauss() * 0.8, 1.6, 7.5);
+    const ry = Math.round(car * ypr);
+    // passing: the backup sees mop-up snaps in blowouts and the odd full game
+    const qbShare = qb2 && rnd() < 0.03 ? 0 : qb2 && Math.abs(margin) >= 24 ? 0.75 : 1;
+    const qbs = qbShare < 1 ? [qb1, qb2] : [qb1];
+    const pw = qbShare < 1 ? [qbShare, 1 - qbShare] : [1];
+    const attS = splitInt(att, pw), cmpS = splitInt(cmp, pw), pyS = splitInt(py, pw), ptdS = splitInt(ptd, pw.map(w => w * w)), intS = splitInt(r.int, pw);
+    qbs.forEach((q, i) => { if (!attS[i])
+        return; addSt(q, 'att', attS[i], G); addSt(q, 'cmp', cmpS[i], G); addSt(q, 'py', pyS[i], G); addSt(q, 'ptd', ptdS[i], G); addSt(q, 'pint', intS[i], G); addSt(q, 'g', 1); });
+    r._qb = qbShare === 0 ? qb2 : qb1;
+    // targets and catches
+    const recv = [O.WR[0], O.WR[1], O.WR[2], O.TE[0], O.RB[0], O.RB[1], healthy(D.TE, 1), healthy(D.WR, 3)];
+    const base = [.21, .17, .12, .16, .11, .05, .05, .04], catchR = [0.64, 0.64, 0.64, 0.7, 0.78, 0.78, 0.7, 0.6], ypcB = [12.6, 12.3, 11.8, 10.6, 7.6, 7.2, 9.6, 12];
+    const tw = recv.map((p, i) => p && !p.ghost ? base[i] * Math.pow(eff(p) / 75, 1.6) * rf(0.65, 1.35) : 0);
+    const tgt = splitInt(att, tw);
+    const rec = splitInt(cmp, tw.map((w, i) => w * catchR[i]));
+    const yw = rec.map((c, i) => c * ypcB[i] * rf(0.7, 1.3));
+    const recy = splitInt(py, yw);
+    recv.forEach((p, i) => { if (!p || p.ghost)
+        return; addSt(p, 'tgt', tgt[i], G); addSt(p, 'rec', rec[i], G); addSt(p, 'recy', recy[i], G); });
     for (let i = 0; i < ptd; i++) {
-        const p = wpick(recv, x => base[recv.indexOf(x)] * eff(x));
+        const p = wpick(recv.filter(x => x && !x.ghost), x => tw[recv.indexOf(x)] * (x.pos === 'TE' ? 1.25 : 1) + 0.001);
         addSt(p, 'rectd', 1, G);
     }
-    const rb2 = O.RB[1];
-    addSt(O.RB[0], 'ry', Math.round(ry * 0.7), G);
-    addSt(rb2, 'ry', Math.round(ry * 0.18), G);
-    addSt(qb, 'ry', Math.round(ry * 0.12), G);
+    // rushing: the lead back shares the load
+    const rb1 = O.RB[0], rb2 = O.RB[1], rb3 = healthy(D.RB, 2);
+    const s1 = rf(0.5, 0.68), sq = clamp(0.05 + (qb1.ghost ? 0.3 : tr(qb1).mob) * 0.12 + gauss() * 0.03, 0.02, 0.22), s3 = rb3 ? rf(0, 0.06) : 0;
+    const rw = [s1, Math.max(0.05, 1 - s1 - sq - s3), sq, s3];
+    const carS = splitInt(car, rw), ryS = splitInt(ry, rw.map((w, i) => w * (i === 2 ? 1.25 : 1) * rf(0.8, 1.2)));
+    [rb1, rb2, r._qb, rb3].forEach((p, i) => { if (p && carS[i]) {
+        addSt(p, 'car', carS[i], G);
+        addSt(p, 'ry', ryS[i], G);
+    } });
     for (let i = 0; i < rtd; i++) {
         const x = rnd();
-        addSt(x < 0.7 ? O.RB[0] : x < 0.85 ? qb : rb2, 'rtd', 1, G);
+        addSt(x < 0.62 ? rb1 : x < 0.8 ? r._qb : rb2, 'rtd', 1, G);
     }
-    [qb, O.RB[0], ...O.WR, ...O.TE, ...O.OL].forEach(p => addSt(p, 'g', 1));
+    // kicking
+    const k = O.K[0], pt = O.P[0];
+    addSt(k, 'fga', r.fg + r.miss, G);
+    addSt(k, 'fgm', r.fg, G);
+    addSt(k, 'xpa', r.xpa, G);
+    addSt(k, 'xpm', r.xpm, G);
+    if (r.punts && pt) {
+        addSt(pt, 'punts', r.punts, G);
+        addSt(pt, 'puntyd', Math.round(r.punts * clamp(46 + (eff(pt) - 72) * 0.2 + gauss() * 3.5, 36, 56)), G);
+    }
+    [rb1, rb2, ...O.WR, ...O.TE, ...O.OL, k, pt].forEach(p => addSt(p, 'g', 1));
 }
 function defStats(Dd, O, r, G) {
+    const D = Dd.D || {};
     const sk = poisson(clamp(2.3 + (Dd.def - O.off) * 0.05, 0.6, 4.5));
-    const rush = [Dd.ED[0], Dd.ED[1], Dd.DT[0], Dd.DT[1], Dd.LB[0], Dd.LB[1], Dd.SS[0], Dd.CB[0]], rw = [.26, .2, .13, .1, .08, .07, .04, .03];
+    // pass rush rotates: starters get most of it, but backups and blitzers chip in
+    const rush = [Dd.ED[0], Dd.ED[1], healthy(D.EDGE, 2), Dd.DT[0], Dd.DT[1], healthy(D.DT, 2), Dd.LB[0], Dd.LB[1], Dd.SS[0], Dd.CB[0]].filter(p => p && !p.ghost);
+    const rwB = { EDGE: .19, DT: .1, LB: .065, S: .035, CB: .025 };
     for (let i = 0; i < sk; i++) {
-        const p = wpick(rush, x => rw[rush.indexOf(x)] * Math.pow(eff(x) / 75, 2));
+        const p = wpick(rush, x => (rwB[x.pos] || .03) * (rush.indexOf(x) === 2 || rush.indexOf(x) === 5 ? 0.5 : 1) * Math.pow(eff(x) / 75, 1.5));
         addSt(p, 'sk', 1, G);
     }
+    addSt(r._qb || O.QB[0], 'skd', sk, G);
     const cov = [...Dd.CB, ...Dd.SS, ...Dd.LB], cw = [.24, .18, .1, .2, .13, .08, .07];
     for (let i = 0; i < r.int; i++) {
         const p = wpick(cov, x => cw[cov.indexOf(x)] * eff(x));
         addSt(p, 'int', 1, G);
     }
-    const tk = ri(44, 56);
-    const tkl = [Dd.LB[0], Dd.LB[1], Dd.SS[0], Dd.SS[1], Dd.CB[0], Dd.CB[1], Dd.CB[2], Dd.DT[0], Dd.DT[1], Dd.ED[0], Dd.ED[1]];
-    const tw = [.19, .17, .13, .12, .1, .09, .07, .05, .04, .03, .03];
-    tkl.forEach((p, i) => addSt(p, 'tk', Math.round(tk * tw[i] * rf(0.7, 1.3)), G));
+    for (let i = 0; i < r.fum; i++) {
+        const p = wpick([...Dd.ED, ...Dd.LB, ...Dd.SS, ...Dd.CB, ...Dd.DT], x => (x.pos === 'EDGE' ? 1.4 : x.pos === 'LB' ? 1.2 : 1) * eff(x));
+        addSt(p, 'ff', 1, G);
+    }
+    const tk = ri(46, 56);
+    const tkl = [Dd.LB[0], Dd.LB[1], Dd.SS[0], Dd.SS[1], Dd.CB[0], Dd.CB[1], Dd.CB[2], Dd.DT[0], Dd.DT[1], Dd.ED[0], Dd.ED[1], healthy(D.LB, 2), healthy(D.DT, 2), healthy(D.EDGE, 2)];
+    const tw = [.155, .14, .12, .11, .095, .085, .065, .05, .045, .04, .035, .03, .02, .02];
+    const tks = splitInt(tk, tkl.map((p, i) => p && !p.ghost ? tw[i] * rf(0.65, 1.35) : 0));
+    tkl.forEach((p, i) => p && addSt(p, 'tk', tks[i], G));
     [...Dd.ED, ...Dd.DT, ...Dd.LB, ...Dd.CB, ...Dd.SS].forEach(p => addSt(p, 'g', 1));
 }
 function boxLines(G, side) {
@@ -3816,10 +3880,10 @@ function boxLines(G, side) {
     const out = [];
     const q = best('py');
     if (q)
-        out.push(`${shortName(q.p.name)} ${q.s.py} pass yds, ${q.s.ptd || 0} TD${q.s.pint ? `, ${q.s.pint} INT` : ''}`);
+        out.push(`${shortName(q.p.name)} ${q.s.att ? `${q.s.cmp || 0}/${q.s.att}, ` : ''}${q.s.py} pass yds, ${q.s.ptd || 0} TD${q.s.pint ? `, ${q.s.pint} INT` : ''}`);
     const r = best('ry');
     if (r)
-        out.push(`${shortName(r.p.name)} ${r.s.ry} rush yds${r.s.rtd ? `, ${r.s.rtd} TD` : ''}`);
+        out.push(`${shortName(r.p.name)} ${r.s.car ? `${r.s.car} car, ` : ''}${r.s.ry} rush yds${r.s.rtd ? `, ${r.s.rtd} TD` : ''}`);
     const w = best('recy');
     if (w)
         out.push(`${shortName(w.p.name)} ${w.s.rec || 0} rec, ${w.s.recy} yds${w.s.rectd ? `, ${w.s.rectd} TD` : ''}`);
@@ -3860,14 +3924,23 @@ function simGame(g, neutral, mustWin) {
     boost.forEach(p => { delete p.rv; });
     let hs = ra.pts, as = rb.pts;
     if (hs === as) {
-        if (mustWin || rnd() < 0.97) {
-            const pH = clamp(0.5 + (A.ovr - B.ovr) * 0.02, 0.2, 0.8);
-            if (rnd() < pH)
-                hs += rnd() < 0.55 ? 3 : 6;
-            else
-                as += rnd() < 0.55 ? 3 : 6;
+        // overtime: most ties get settled by a field goal or a walk-off touchdown
+        if (mustWin || rnd() < 0.93) {
+            const pH = clamp(0.5 + (A.ovr - B.ovr) * 0.015, 0.25, 0.75), w = rnd() < pH ? ra : rb;
+            if (rnd() < 0.55) {
+                w.fg++;
+                w.pts += 3;
+            }
+            else {
+                w.td++;
+                w.pts += 6;
+            }
+            hs = ra.pts;
+            as = rb.pts;
         }
     }
+    ra.opp = rb.pts;
+    rb.opp = ra.pts;
     const GH_ = {}, GA = {};
     offStats(A, B, ra, GH_);
     defStats(B, A, ra, GA);
@@ -5803,7 +5876,7 @@ COV.fire = { screen: 0.6, short: 0.1, medium: 0.2, deep: 0.25 };
 const ADJ_O = { ground: { l: 'Commit to the run', d: 'Better run blocking. Defenses key on it.' }, quick: { l: 'Quick game', d: 'Get the ball out fast. Fewer sacks, fewer shots.' }, shots: { l: 'Take shots', d: 'Push the ball downfield. More big plays, more risk.' }, none: { l: 'Stay the course', d: 'No change.' } };
 const ADJ_D = { run: { l: 'Stop the run', d: 'Load up against the ground game.' }, cov: { l: 'Tighten coverage', d: 'Bracket their best receiver and stay deep.' }, rush: { l: 'Get after the QB', d: 'More pressure, softer coverage.' }, none: { l: 'Stay the course', d: 'No change.' } };
 const INJ_TYPES = ['ankle', 'knee', 'hamstring', 'shoulder', 'concussion', 'ribs', 'hip', 'groin', 'calf', 'wrist', 'back', 'stinger', 'foot'];
-const STD_KEYS = ['py', 'ptd', 'pint', 'ry', 'rtd', 'rec', 'recy', 'rectd', 'tk', 'sk', 'int'];
+const STD_KEYS = ['py', 'ptd', 'pint', 'ry', 'rtd', 'rec', 'recy', 'rectd', 'tk', 'sk', 'int', 'att', 'cmp', 'car', 'tgt', 'skd', 'ff', 'fga', 'fgm', 'xpa', 'xpm', 'punts', 'puntyd'];
 // ---- setup ----
 function liveKey() { return S.phase === 'post' ? 'po' + S.po.round + '-' + S.year : 'w' + S.week + '-' + S.year; }
 function poPairs() {
@@ -17008,8 +17081,8 @@ function seasonArchive() {
     }
     const pool = Object.values(S.players).filter(p => p.st && p.st.g);
     const ids = new Set();
-    for (const [k] of STAT_CATS)
-        pool.filter(p => p.st[k] > 0).sort((a, b) => b.st[k] - a.st[k]).slice(0, 20).forEach(p => ids.add(p.id));
+    for (const [k] of [...STAT_CATS, ['fgm'], ['punts']])
+        pool.filter(p => p.st[k] > 0).sort((a, b) => b.st[k] - a.st[k]).slice(0, k === 'fgm' || k === 'punts' ? 34 : 20).forEach(p => ids.add(p.id));
     const pl = [...ids].map(id => { const p = S.players[id], s = {}; for (const k of CAR_KEYS)
         if (p.st[k]) s[k] = p.st[k]; return { id, n: p.name, pos: p.pos, tm: p.team || p.lastTm || '', s }; });
     S.sarc = S.sarc.filter(x => x.y !== S.year);
@@ -17223,11 +17296,20 @@ function lgTeam() {
     </tbody></table></div><p class="dim small lgnote">${note} Tap a column to sort.</p>`;
 }
 const PL_GROUPS = {
-    pass: { l: 'Passing', cols: [['g', 'G'], ['py', 'Yds'], ['ptd', 'TD'], ['pint', 'INT'], ['pypg', 'Yds/G', s => s.g ? s.py / s.g : 0, 1]], def: 'py', need: 'py' },
-    rush: { l: 'Rushing', cols: [['g', 'G'], ['ry', 'Yds'], ['rtd', 'TD'], ['rypg', 'Yds/G', s => s.g ? s.ry / s.g : 0, 1]], def: 'ry', need: 'ry' },
-    rec: { l: 'Receiving', cols: [['g', 'G'], ['rec', 'Rec'], ['recy', 'Yds'], ['rectd', 'TD'], ['ypr', 'Yds/Rec', s => s.rec ? s.recy / s.rec : 0, 1]], def: 'recy', need: 'rec' },
-    def: { l: 'Defense', cols: [['g', 'G'], ['tk', 'Tackles'], ['sk', 'Sacks'], ['int', 'INT']], def: 'tk', need: 'g', pos: ['EDGE', 'DT', 'LB', 'CB', 'S'] }
+    pass: { l: 'Passing', cols: [['g', 'G'], ['cmp', 'Cmp'], ['att', 'Att'], ['cpct', 'Cmp%', s => s.att ? s.cmp / s.att * 100 : 0, 1], ['py', 'Yds'], ['ypa', 'Y/A', s => s.att ? s.py / s.att : 0, 1], ['ptd', 'TD'], ['pint', 'INT'], ['rate', 'Rate', s => passerRating(s), 1], ['pypg', 'Yds/G', s => s.g ? s.py / s.g : 0, 1]], def: 'py', need: 'py' },
+    rush: { l: 'Rushing', cols: [['g', 'G'], ['car', 'Car'], ['ry', 'Yds'], ['ypc', 'Avg', s => s.car ? s.ry / s.car : 0, 1], ['rtd', 'TD'], ['rypg', 'Yds/G', s => s.g ? s.ry / s.g : 0, 1]], def: 'ry', need: 'ry' },
+    rec: { l: 'Receiving', cols: [['g', 'G'], ['tgt', 'Tgt'], ['rec', 'Rec'], ['recy', 'Yds'], ['rectd', 'TD'], ['ypr', 'Yds/Rec', s => s.rec ? s.recy / s.rec : 0, 1]], def: 'recy', need: 'rec' },
+    def: { l: 'Defense', cols: [['g', 'G'], ['tk', 'Tackles'], ['sk', 'Sacks'], ['int', 'INT'], ['ff', 'FF']], def: 'tk', need: 'g', pos: ['EDGE', 'DT', 'LB', 'CB', 'S'] },
+    kick: { l: 'Kicking', cols: [['g', 'G'], ['fgm', 'FGM'], ['fga', 'FGA'], ['fgp', 'FG%', s => s.fga ? s.fgm / s.fga * 100 : 0, 1], ['xpm', 'XPM'], ['xpa', 'XPA'], ['xpp', 'XP%', s => s.xpa ? s.xpm / s.xpa * 100 : 0, 1]], def: 'fgm', need: 'g', pos: ['K'] },
+    punt: { l: 'Punting', cols: [['g', 'G'], ['punts', 'Punts'], ['puntyd', 'Yds'], ['pavg', 'Avg', s => s.punts ? s.puntyd / s.punts : 0, 1]], def: 'puntyd', need: 'punts', pos: ['P'] }
 };
+// NFL passer rating; needs attempts, so stats from before box scores existed show as 0
+function passerRating(s) {
+    if (!s.att)
+        return 0;
+    const c = x => clamp(x, 0, 2.375), a = s.att;
+    return (c((s.cmp / a - 0.3) * 5) + c((s.py / a - 3) * 0.25) + c(s.ptd / a * 20) + c(2.375 - s.pint / a * 25)) / 6 * 100;
+}
 function lgPlayers() {
     const a = lgSeason(), gk = PL_GROUPS[UI.lpg] ? UI.lpg : 'pass', G = PL_GROUPS[gk];
     const sk = G.cols.find(c => c[0] === UI.lps) ? UI.lps : G.def, col = G.cols.find(c => c[0] === sk);
@@ -17236,6 +17318,8 @@ function lgPlayers() {
     rows = rows.filter(r => (r.s[G.need] || 0) > 0 && (!G.pos || G.pos.includes(r.pos)) && (!UI.lpm || r.tm === S.user));
     if (gk === 'pass')
         rows = rows.filter(r => r.s.py >= 100 || r.pos === 'QB');
+    if (gk === 'kick')
+        rows = rows.filter(r => (r.s.fga || 0) + (r.s.xpa || 0) > 0);
     rows.sort((x, y) => vOf(y.s, col) - vOf(x.s, col) || (y.s.g || 0) - (x.s.g || 0));
     rows = rows.slice(0, UI.lpm ? 60 : 40);
     const head = `<div class="lgbar"><div class="segrow">${Object.entries(PL_GROUPS).map(([k, g]) => `<button class="segb ${gk === k ? 'on' : ''}" data-a="lpg" data-v="${k}">${g.l}</button>`).join('')}<button class="fchip ${UI.lpm ? 'on' : ''}" data-a="lpm">Your team</button></div>${lgSeasonSel(a, false)}</div>`;
