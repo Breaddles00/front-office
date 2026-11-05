@@ -619,6 +619,15 @@ input[type=range]{width:100%;accent-color:var(--team)}
 /* broadcast field + play art */
 .gfield{position:relative;border-radius:12px;overflow:hidden;background:#0b1016;border:1px solid var(--line2);box-shadow:0 10px 30px rgba(0,0,0,.35)}
 .gfcv{display:block;width:100%}
+.gdbar{display:flex;justify-content:flex-end;align-items:center;gap:10px;margin:-4px 0 -6px}
+.tgsw{display:inline-flex;align-items:center;gap:8px;background:none;border:0;padding:6px 2px;min-height:36px;color:var(--mute);font-family:var(--cond);font-weight:700;font-size:13px;letter-spacing:.04em;text-transform:uppercase;cursor:pointer}
+.tgsw i{position:relative;width:36px;height:20px;border-radius:10px;background:var(--line2);transition:background .15s}
+.tgsw i::after{content:'';position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;background:#e8edf2;transition:transform .15s}
+.tgsw[aria-checked="true"]{color:var(--fg)}
+.tgsw[aria-checked="true"] i{background:var(--team)}
+.tgsw[aria-checked="true"] i::after{transform:translateX(16px)}
+.tgsw:focus-visible{outline:2px solid var(--team);outline-offset:2px;border-radius:6px}
+@media (prefers-reduced-motion:reduce){.tgsw i,.tgsw i::after{transition:none}}
 .gf-ctl{position:absolute;right:8px;bottom:8px;display:flex;gap:6px;align-items:center;z-index:2}
 .gf-spd{display:flex;gap:2px;background:rgba(8,12,18,.72);border-radius:7px;padding:2px}
 .gfb{font-family:var(--cond);font-weight:700;font-size:12px;letter-spacing:.04em;color:#e8edf2;background:rgba(8,12,18,.72);border:1px solid rgba(255,255,255,.14);border-radius:6px;padding:5px 9px;min-height:30px}
@@ -13625,8 +13634,9 @@ function vLive(L) {
     const last = L.log.slice().reverse().find(e => ['play', 'big', 'score', 'pen', 'final'].includes(e.type));
     const simB = !L.done ? `<div class="simrow"><span class="eyebrow">Coordinators</span><button class="mini" data-a="gsim" data-v="play">Call one play</button><button class="mini" data-a="gsim" data-v="drive">Run this drive</button><button class="mini" data-a="gsim" data-v="${L.q <= 2 ? 'half' : 'quarter'}">${L.q <= 2 ? 'Sim to halftime' : 'Sim the quarter'}</button><button class="mini" data-a="gsim" data-v="end">Sim to the end</button></div>` : '';
     const camSel = `<div class="gf-cam" role="group" aria-label="Camera">${[['side', 'Broadcast'], ['qb', 'Behind QB']].map(([k, l]) => `<button class="gfb ${CAM_MODE === k ? 'on' : ''}" data-a="acam" data-v="${k}" aria-pressed="${CAM_MODE === k}">${l}</button>`).join('')}</div>`;
-    const ctl = camSel + `<div class="gf-ctl"><button class="gfb" data-a="areplay" title="Replay the last play" aria-label="Replay the last play">↺ Replay</button><button class="gfb" data-a="askip" title="Skip to the result" aria-label="Skip animation">Skip ▸▸</button><span class="gf-spd">${[['normal', '1×'], ['fast', '2×'], ['off', 'Off']].map(([k, l]) => `<button class="gfb ${ANIM_SPD === k ? 'on' : ''}" data-a="aspd" data-v="${k}" aria-pressed="${ANIM_SPD === k}">${l}</button>`).join('')}</span></div>`;
-    return `<div class="gd">${scorebug(L)}<div class="gfield" id="gfield">${ctl}</div>
+    const ctl = camSel + `<div class="gf-ctl"><button class="gfb" data-a="areplay" title="Replay the last play" aria-label="Replay the last play">↺ Replay</button><button class="gfb" data-a="askip" title="Skip to the result" aria-label="Skip animation">Skip ▸▸</button><span class="gf-spd">${[['normal', '1×'], ['fast', '2×']].map(([k, l]) => `<button class="gfb ${ANIM_SPD === k ? 'on' : ''}" data-a="aspd" data-v="${k}" aria-pressed="${ANIM_SPD === k}">${l}</button>`).join('')}</span></div>`;
+    const fxSw = `<div class="gdbar"><button class="tgsw" role="switch" data-a="ganim" aria-checked="${animOn()}" title="${animOn() ? 'Turn off play animations for faster coaching' : 'Turn play animations back on'}"><i aria-hidden="true"></i>Animations</button></div>`;
+    return `<div class="gd">${scorebug(L)}${fxSw}${animOn() ? `<div class="gfield" id="gfield">${ctl}</div>` : ''}
    ${last ? `<p class="lastplay t-${last.type}">${esc(last.txt)}</p>` : ''}
    <div class="gdcols"><div class="gdmain">${(() => { const n = L.alerts.filter(x => { const p = S.players[x.pid]; return p && p.team === L.t[L.us]; }).length; return n && !L.done ? `<button class="alertbar" data-a="galerts">${n} sideline item${n > 1 ? 's' : ''} need${n > 1 ? '' : 's'} you</button>` : ''; })()}<section class="card pcard">${promptPanel(L)}</section>${simB}
      <section class="card"><div class="card-h"><h3>Play-by-play</h3><span class="dim small">${L.drive && L.drive.side !== -1 ? `Drive: ${L.drive.plays} plays, ${L.drive.yds} yds` : ''}</span></div>${feedHTML(L, 70)}</section></div>
@@ -13683,6 +13693,14 @@ Object.assign(A, {
     }
     else
         mountField(); },
+    ganim: () => { const on = !animOn(); if (!on) {
+        if (animBusy())
+            animSkip();
+        GF.post = null;
+        GF.queue = [];
+        [GF.raf, GF.postRaf, GF.idleRaf].forEach(id => id && cancelAnimationFrame(id));
+        GF.raf = GF.postRaf = GF.idleRaf = 0;
+    } setAnimFx(on); render(); },
     aspd: v => { setAnimSpeed(v); document.querySelectorAll('[data-a="aspd"]').forEach(b => { const on = b.dataset.v === v; b.classList.toggle('on', on); b.setAttribute('aria-pressed', String(on)); }); },
     gto: () => { const L = S.live; if (animBusy()) {
         animSkip();
@@ -13745,11 +13763,25 @@ let ANIM_SPD = (() => { try {
 catch (e) {
     return 'normal';
 } })();
+// Game day animations switch (on by default). Off hides the broadcast field so plays resolve instantly.
+let ANIM_FX = (() => { try {
+    const v = localStorage.getItem('nfl-fo-fx');
+    return v ? v !== 'off' : ANIM_SPD !== 'off'; // carry over the old "Off" speed setting
+}
+catch (e) {
+    return true;
+} })();
+if (ANIM_SPD === 'off')
+    ANIM_SPD = 'normal';
+function setAnimFx(on) { ANIM_FX = !!on; try {
+    localStorage.setItem('nfl-fo-fx', on ? 'on' : 'off');
+}
+catch (e) { } }
 function setAnimSpeed(v) { ANIM_SPD = v; try {
     localStorage.setItem('nfl-fo-anim', v);
 }
 catch (e) { } }
-function animOn() { return ANIM_SPD !== 'off'; }
+function animOn() { return ANIM_FX; }
 function spdK() { return ANIM_SPD === 'fast' ? 1.05 : 0.55; }
 function h2(a, b) { return lh((a | 0) + 977, (b | 0) + 31); }
 function sgn(x) { return x < 0 ? -1 : 1; }
