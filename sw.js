@@ -1,5 +1,5 @@
 // Offline layer for Front Office. Bump VERSION whenever index.html changes so phones pick up the update.
-const VERSION = 'fo-v1';
+const VERSION = 'fo-v2';
 const CORE = ['./', './index.html', './manifest.webmanifest', './icons/icon-180.png', './icons/icon-192.png', './icons/icon-512.png'];
 const FONTS = 'fo-fonts';
 
