@@ -398,10 +398,11 @@ body.starting #tabs,body.starting #top{display:none}
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
 
 /* head coach */
-.cav{width:40px;height:40px;border-radius:6px;image-rendering:pixelated;border:1px solid var(--line2);background:var(--panel2)}
+.cav{width:40px;height:40px;border-radius:6px;border:1px solid var(--line2);background:var(--panel2)}
 .coachwrap{display:grid;grid-template-columns:minmax(0,420px) minmax(0,1fr);gap:18px;align-items:start}
 .stagecard{box-sizing:border-box;position:sticky;top:calc(env(safe-area-inset-top,0px) + var(--toph,64px) + 52px);background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px;display:flex;flex-direction:column;gap:10px}
-.cstage{width:100%;aspect-ratio:3/4;border-radius:6px;overflow:hidden;background:#2b302c;border:1px solid var(--line2)}
+.cstage{width:100%;aspect-ratio:4/5;border-radius:6px;overflow:hidden;background:#2b302c;border:1px solid var(--line2)}
+.chd{width:100%;height:100%;object-fit:cover;display:block}
 .cvs{display:block;width:100%;height:100%;image-rendering:pixelated;image-rendering:crisp-edges;cursor:grab;touch-action:none}
 .cvs:active{cursor:grabbing}
 .cid{display:flex;flex-direction:column}
@@ -433,7 +434,7 @@ input[type=range]{width:100%;accent-color:var(--team)}
 .perks li{font-size:14px;color:var(--mute)}
 .perks li b{display:block;color:var(--fg)}
 .coachcard{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
-.cport{width:72px;height:72px;border-radius:8px;image-rendering:pixelated;border:1px solid var(--line2)}
+.cport{width:72px;height:72px;border-radius:8px;border:1px solid var(--line2)}
 .cc-b{display:flex;flex-direction:column;flex:1;min-width:0}
 .cc-b b{font-family:var(--display);font-weight:800;font-size:24px;line-height:1.05}
 .cc-b span{font-size:13px;color:var(--mute)}
@@ -11988,8 +11989,23 @@ function camBar() {
     <div class="camg">${b('out', 'Zoom out', CAM_ICONS.out)}<span id="czoom" class="czoom num">${CR.zt.toFixed(1)}×</span>${b('in', 'Zoom in', CAM_ICONS.in)}</div>
     <div class="camg txt"><button class="camt" data-a="cam" data-v="body">Full body</button><button class="camt" data-a="cam" data-v="head">Face</button><button class="camt" data-a="cam" data-v="front">Front</button><button class="camt" data-a="cam" data-v="reset">Reset</button></div></div>`;
 }
+// HD coach portrait: full creator view and a head-and-shoulders crop, cached per look
+const _CPC = {};
+function coachLookKey(c, t) { return JSON.stringify([c.seed, c.age, c.wt, c.skin, c.hair, c.hairC, c.face, c.eyes, c.top, c.topC, c.hat, !!c.headset, !!c.sheet, !!c.whistle, t.c1, t.c2]); }
+function coachHDUrl(crop) {
+    if (!S || !S.coach) return '';
+    const c = normCoach(S.coach), t = S.teams[S.user], k = (crop ? 'c' : 'f') + coachLookKey(c, t), slot = crop ? 'crop' : 'full';
+    const hit = _CPC[slot];
+    if (hit && hit.k === k) return hit.u;
+    if (hit) URL.revokeObjectURL(hit.u);
+    const svg = HD.coach(c, t, { crop: !!crop, label: 'Portrait of ' + esc(c.name) });
+    const u = URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml' }));
+    _CPC[slot] = { k, u };
+    return u;
+}
+function coachImg() { return coachHDUrl(true); }
 function coachRebuild() { if (!S || !S.coach)
-    return; ensureCanvas(); const m = buildCoach(S.coach); CR.tris = m.tris; CR.sy = m.sy; renderCoach(); }
+    return; const el = document.getElementById('chd'); if (!el) return; el.src = coachHDUrl(false); el.alt = 'Portrait of ' + S.coach.name; }
 function coachLoop(ts) {
     if (!CR.cv || !document.body.contains(CR.cv)) {
         CR.raf = 0;
@@ -12006,46 +12022,11 @@ function mountCoach() {
     const host = document.getElementById('cstage');
     if (!host)
         return;
-    ensureCanvas();
-    host.appendChild(CR.cv);
+    host.innerHTML = '<img id="chd" class="chd" alt="">';
     coachRebuild();
-    const still = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    if (still)
-        CR.paused = true;
-    if (!CR.raf)
-        CR.raf = requestAnimationFrame(coachLoop);
-    coachCamUI();
 }
 function coachShot(rot) { ensureCanvas(); const m = buildCoach(S.coach); CR.tris = m.tris; CR.sy = m.sy; const keep = CR.rot, kz = CR.zoom; CR.rot = rot; CR.zoom = 1; renderCoach(); const u = CR.cv.toDataURL('image/png'); CR.rot = keep; CR.zoom = kz; renderCoach(); return u; }
-function coachPortrait() {
-    if (!S.coach)
-        return null;
-    ensureCanvas();
-    const keep = CR.rot, kz = CR.zoom;
-    const m = buildCoach(S.coach);
-    CR.tris = m.tris;
-    CR.sy = m.sy;
-    CR.rot = 0.35;
-    CR.zoom = 1;
-    renderCoach();
-    const out = document.createElement('canvas');
-    out.width = 72;
-    out.height = 72;
-    const g = out.getContext('2d');
-    g.imageSmoothingEnabled = false;
-    const cam = camFor(CR.sy), hp = camXf([0, 1.72 * CR.sy, 0], cam), side = Math.round(CR.W * 0.36);
-    const sx = clamp(Math.round(hp[0] - side / 2), 0, CR.W - side), sy = clamp(Math.round(hp[1] - side * 0.45), 0, CR.H - side);
-    g.drawImage(CR.cv, sx, sy, side, side, 0, 0, 72, 72);
-    CR.rot = keep;
-    CR.zoom = kz;
-    renderCoach();
-    try {
-        return out.toDataURL('image/png');
-    }
-    catch (e) {
-        return null;
-    }
-}
+function coachPortrait() { return S.coach ? coachImg() : null; }
 // ---------- view ----------
 const COACH_OPTS = {
     hair: [['bald', 'Bald'], ['buzz', 'Buzz cut'], ['crew', 'Crew cut'], ['part', 'Side part'], ['slick', 'Slicked back'], ['curly', 'Curly top'], ['flow', 'Flow'], ['thin', 'Thinning']],
@@ -12067,6 +12048,8 @@ function normCoach(c) {
     }
     if (c.whistle == null)
         c.whistle = false;
+    if (c.seed == null)
+        c.seed = Math.floor(Math.random() * 1e9);
     if (!c.pants || !PANTS[c.pants])
         c.pants = 'khaki';
     return c;
@@ -12086,8 +12069,7 @@ function vCoach() {
   <div class="coachwrap">
     <section class="stagecard"><div id="cstage" class="cstage"></div>
       <div class="cid"><b id="cname">${esc(c.name)}</b><span id="ctitle">${esc(COACH_ARCH[c.arch].l)} · ${esc(t.city)} ${esc(t.name)}</span></div>
-      ${camBar()}
-      <p class="dim small">Drag to turn him. Scroll or pinch to zoom; double-click to frame his face.</p></section>
+</section>
     <div class="cctrl">
       <section class="card"><h3>Identity</h3>
         <div class="sl"><label for="cs-name">Name</label><input id="cs-name" type="text" maxlength="28" value="${esc(c.name)}" data-cin="name"></div>
@@ -12137,6 +12119,7 @@ function coachSet(key, val) {
 }
 function coachRandom() {
     const c = S.coach;
+    c.seed = Math.floor(Math.random() * 1e9);
     const r = a => a[Math.floor(Math.random() * a.length)];
     Object.assign(c, { age: 30 + Math.floor(Math.random() * 40), ht: 66 + Math.floor(Math.random() * 12), wt: 165 + Math.floor(Math.random() * 130), skin: Math.floor(Math.random() * 6), hairC: Math.floor(Math.random() * 6),
         hair: r(COACH_OPTS.hair)[0], face: r(COACH_OPTS.face)[0], eyes: r(['none', 'none', 'glasses', 'shades', 'wrap']), top: r(COACH_OPTS.top)[0], topC: r(['c1', 'c1', 'c2', 'white', 'black', 'gray', 'navy']), pants: r(Object.keys(PANTS)), bottom: r(['pants', 'pants', 'joggers', 'shorts']), shoes: r(['white', 'black', 'dress']), hat: r(COACH_OPTS.hat)[0], headset: Math.random() < 0.75, sheet: Math.random() < 0.7, whistle: Math.random() < 0.3 });
@@ -12439,7 +12422,7 @@ function renderTop() {
     if (S.fired)
         mainB = `<button class="btn primary" data-a="tab" data-v="office">Find a new job</button>`;
     $('#top').innerHTML = `<div class="top-in">
-    <button class="team-id" data-a="tab" data-v="office">${S.coach && S.coach.img ? `<img class="cav" src="${S.coach.img}" alt="">` : ''}${badge(S.user, 'lg')}<span class="tid"><b>${esc(t.city)} ${esc(t.name)}</b><small>${rec(t)} · ${esc(phaseLabel())}</small></span></button>
+    <button class="team-id" data-a="tab" data-v="office">${S.coach ? `<img class="cav" src="${coachImg()}" alt="">` : ''}${badge(S.user, 'lg')}<span class="tid"><b>${esc(t.city)} ${esc(t.name)}</b><small>${rec(t)} · ${esc(phaseLabel())}</small></span></button>
     <div class="top-r">
       <div class="capchip ${sp < 0 ? 'neg' : ''}"><small>Cap space</small><b>${capTxt()}</b></div>
       ${typeof sfxBtn === 'function' ? sfxBtn() : ''}${sim}${mainB}
@@ -12576,7 +12559,7 @@ function vOffice() {
     }
     const wire = `<section class="card"><div class="card-h"><h2>League wire</h2></div><ul class="wire">${S.news.slice(0, 14).map(n => `<li class="${n.type}"><span>${n.y} · ${esc(n.w)}</span>${esc(n.txt)}</li>`).join('')}</ul></section>`;
     const c = S.coach;
-    const ccard = c ? `<section class="card coachcard">${c.img ? `<img class="cport" src="${c.img}" alt="Portrait of ${esc(c.name)}">` : ''}<div class="cc-b"><p class="eyebrow">Head coach</p><b>${esc(c.name)}</b><span>${esc(COACH_EXP[c.exp].l)} · ${esc(COACH_BG[c.bg].l)} · ${esc(COACH_ARCH[c.arch].l)}</span></div><button class="btn ghost" data-a="tab" data-v="coach">Edit coach</button></section>` : '';
+    const ccard = c ? `<section class="card coachcard">${`<img class="cport" src="${coachImg()}" alt="Portrait of ${esc(c.name)}">`}<div class="cc-b"><p class="eyebrow">Head coach</p><b>${esc(c.name)}</b><span>${esc(COACH_EXP[c.exp].l)} · ${esc(COACH_BG[c.bg].l)} · ${esc(COACH_ARCH[c.arch].l)}</span></div><button class="btn ghost" data-a="tab" data-v="coach">Edit coach</button></section>` : '';
     if (S.fired)
         top = firedCard();
     const todo = [rvCard(), ...(typeof xOfficeCards === 'function' ? xOfficeCards() : []), lreCard(), deadlineCard(), staffAlertCard(), contractOfficeCard(), trainOfficeCard(), trOfficeCard()].filter(Boolean);
@@ -12843,7 +12826,7 @@ const A = {
     cam: v => coachCam(v),
     badgeclear: v => { delete BADGES[v]; saveBadges(); render(); },
     badgeclearall: () => { BADGES = {}; saveBadges(); toast('Badges cleared.'); render(); },
-    hire: () => { S.coach.img = coachPortrait(); const first = UI.onboarding; UI.onboarding = false; if (first) {
+    hire: () => { S.coach.img = null; const first = UI.onboarding; UI.onboarding = false; if (first) {
         S.interviews = 12 + (S.coach.bg === 'col' ? 4 : 0);
         S.talks = talkMax();
         news(`${S.coach.name} is introduced as the ${S.teams[S.user].name}' new head coach.`, 'front');
@@ -18694,111 +18677,965 @@ function bodyA(g, x, y, s, L, U, view, facing, o) {
     }
     g.restore();
 }
+// ===== HD PORTRAITS: painted-vector headshots for players and the head coach =====
+// Same inputs as the game's lookOf()/coach object; output is one self-contained SVG string.
+const HD = (() => {
+  const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
+  const hexRgb = h => { h = h.replace('#', ''); if (h.length === 3) h = h.split('').map(c => c + c).join(''); return [0, 2, 4].map(i => parseInt(h.slice(i, i + 2), 16)); };
+  const rgbHex = c => '#' + c.map(v => Math.round(clamp(v, 0, 255)).toString(16).padStart(2, '0')).join('');
+  const mix = (a, b, t) => { const x = hexRgb(a), y = hexRgb(b); return rgbHex(x.map((v, i) => v + (y[i] - v) * t)); };
+  const shade = (h, k) => rgbHex(hexRgb(h).map(v => v * k));
+  const lum = h => { const c = hexRgb(h).map(v => { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); }); return .2126 * c[0] + .7152 * c[1] + .0722 * c[2]; };
+  const ink = bg => lum(bg) > 0.36 ? '#10151b' : '#ffffff';
+  function rng(seed) { let a = (seed >>> 0) || 1; return () => { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+  const f = n => Math.round(n * 10) / 10;
+  const A = o => Object.entries(o).filter(([, v]) => v != null && v !== false).map(([k, v]) => ` ${k}="${v}"`).join('');
+  const E = (t, o, inner = '') => `<${t}${A(o)}>${inner}</${t}>`;
+  const P = (d, o = {}) => E('path', Object.assign({ d }, o));
+  const ell = (cx, cy, rx, ry, o = {}) => E('ellipse', Object.assign({ cx: f(cx), cy: f(cy), rx: f(Math.abs(rx)), ry: f(Math.abs(ry)) }, o));
+  const circ = (cx, cy, r, o = {}) => E('circle', Object.assign({ cx: f(cx), cy: f(cy), r: f(r) }, o));
+  const G = (o, inner) => E('g', o, inner);
+  const pt = p => `${f(p[0])} ${f(p[1])}`;
+  // smooth curve through points (Catmull-Rom as cubic Béziers)
+  function cr(pts, closed = true, ten = 1) {
+    const n = pts.length, get = i => closed ? pts[(i + n) % n] : pts[clamp(i, 0, n - 1)];
+    let d = 'M' + pt(pts[0]);
+    for (let i = 0; i < (closed ? n : n - 1); i++) {
+      const p0 = get(i - 1), p1 = get(i), p2 = get(i + 1), p3 = get(i + 2);
+      d += 'C' + pt([p1[0] + (p2[0] - p0[0]) / 6 * ten, p1[1] + (p2[1] - p0[1]) / 6 * ten]) + ' ' + pt([p2[0] - (p3[0] - p1[0]) / 6 * ten, p2[1] - (p3[1] - p1[1]) / 6 * ten]) + ' ' + pt(p2);
+    }
+    return closed ? d + 'Z' : d;
+  }
+  // defs registry for one portrait
+  function Ctx(id) {
+    const defs = [], cache = {};
+    let n = 0;
+    const nid = p => `${id}${p}${n++}`;
+    const stops = s => s.map(([o, c, a]) => E('stop', { offset: o, 'stop-color': c, 'stop-opacity': a == null ? null : a })).join('');
+    return {
+      defs,
+      lin(s, x1 = 0, y1 = 0, x2 = 0, y2 = 1, abs) { const i = nid('l'); defs.push(E('linearGradient', { id: i, x1, y1, x2, y2, gradientUnits: abs ? 'userSpaceOnUse' : null }, stops(s))); return `url(#${i})`; },
+      rad(s, cx = .5, cy = .5, r = .5, abs, fx, fy) { const i = nid('r'); defs.push(E('radialGradient', { id: i, cx, cy, r, fx, fy, gradientUnits: abs ? 'userSpaceOnUse' : null }, stops(s))); return `url(#${i})`; },
+      clip(d, eo) { const i = nid('c'); defs.push(E('clipPath', { id: i }, P(d, eo ? { 'clip-rule': 'evenodd' } : {}))); return `url(#${i})`; },
+      blur(sd) { const k = 'b' + sd; if (!cache[k]) { const i = nid('b'); defs.push(E('filter', { id: i, x: '-60%', y: '-60%', width: '220%', height: '220%' }, E('feGaussianBlur', { stdDeviation: sd }))); cache[k] = `url(#${i})`; } return cache[k]; },
+      // speckled hair texture (stubble, buzz cuts) restricted to whatever shape the filter is applied to
+      noise(color, freq, dens, seed) {
+        const k = ['n', color, freq, dens, seed].join(); if (cache[k]) return cache[k];
+        const i = nid('n'), [r, g, b] = hexRgb(color).map(v => (v / 255).toFixed(3));
+        defs.push(E('filter', { id: i, x: '0', y: '0', width: '100%', height: '100%', 'color-interpolation-filters': 'sRGB' },
+          E('feTurbulence', { type: 'fractalNoise', baseFrequency: freq, numOctaves: 2, seed: seed % 97, result: 'n' }) +
+          E('feColorMatrix', { in: 'n', type: 'matrix', values: `0 0 0 0 ${r} 0 0 0 0 ${g} 0 0 0 0 ${b} 9 0 0 0 ${(-9 * (0.64 - 0.1 * dens)).toFixed(2)}`, result: 'c' }) +
+          E('feComposite', { in: 'c', in2: 'SourceGraphic', operator: 'in' })));
+        return (cache[k] = `url(#${i})`);
+      },
+      dots(color, step, rad, op) {
+        const k = ['d', color, step, rad, op].join(); if (cache[k]) return cache[k];
+        const i = nid('p');
+        defs.push(E('pattern', { id: i, width: step, height: step, patternUnits: 'userSpaceOnUse' }, E('circle', { cx: step / 2, cy: step / 2, r: rad, fill: color, opacity: op }) + E('circle', { cx: 0, cy: 0, r: rad, fill: color, opacity: op }) + E('circle', { cx: step, cy: step, r: rad, fill: color, opacity: op })));
+        return (cache[k] = `url(#${i})`);
+      },
+      grain(seed, op) {
+        const k = 'gr' + op; if (cache[k]) return cache[k];
+        const i = nid('g');
+        defs.push(E('filter', { id: i, x: '0', y: '0', width: '100%', height: '100%', 'color-interpolation-filters': 'sRGB' },
+          E('feTurbulence', { type: 'fractalNoise', baseFrequency: 0.9, numOctaves: 3, seed: seed % 89, result: 'n' }) +
+          E('feColorMatrix', { in: 'n', type: 'matrix', values: `0 0 0 0 0.1 0 0 0 0 0.05 0 0 0 0 0.03 0 0 -${op} 0 ${op * 0.55}`, result: 'c' }) +
+          E('feComposite', { in: 'c', in2: 'SourceGraphic', operator: 'in' })));
+        return (cache[k] = `url(#${i})`);
+      }
+    };
+  }
+
+  // ---------- athletic block numerals ----------
+  function numerals(str, cx, y, H, fill, edge, sw, op = 1) {
+    str = String(str).slice(0, 2);
+    const W = H * 0.56, t = H * 0.23, gap = H * 0.13, tot = str.length * W + (str.length - 1) * gap;
+    const SEG = { a: [0, 0, W, t], b: [W - t, 0, t, H / 2 + t / 2], c: [W - t, H / 2 - t / 2, t, H / 2 + t / 2], d: [0, H - t, W, t], e: [0, H / 2 - t / 2, t, H / 2 + t / 2], f: [0, 0, t, H / 2 + t / 2], g: [0, H / 2 - t / 2, W, t] };
+    const MAP = { 0: 'abcdef', 2: 'abged', 3: 'abgcd', 4: 'fgbc', 5: 'afgcd', 6: 'afgedc', 7: 'abc', 8: 'abcdefg', 9: 'abcdfg' };
+    const rects = [];
+    [...str].forEach((ch, k) => {
+      const x0 = cx - tot / 2 + k * (W + gap);
+      if (ch === '1') { rects.push([x0 + W / 2 - t / 2, y, t, H], [x0 + W / 2 - t * 1.25, y, t * 0.9, t * 0.8], [x0 + W / 2 - t * 1.1, y + H - t * 0.75, t * 2.2, t * 0.75]); return; }
+      for (const s of (MAP[ch] || '')) { const [a, b, c, d] = SEG[s]; rects.push([x0 + a, y + b, c, d]); }
+    });
+    const R = (o, ex) => rects.map(([x, yy, w, h]) => E('rect', Object.assign({ x: f(x - ex), y: f(yy - ex), width: f(w + ex * 2), height: f(h + ex * 2), rx: f(t * 0.18 + ex * 0.5) }, o))).join('');
+    return G({ opacity: op }, (edge ? R({ fill: edge }, sw) : '') + R({ fill }, 0));
+  }
+
+  // ---------- shared head ----------
+  // H: { cx, cy, hw, hh, skin, skinI, hairC, grey, hair, beard, jaw, nose, eyeGap, brow, ears, faceLen, age, mood, angry, eyeBlack, seed, iris, rim, hat, fat }
+  function head(X, H) {
+    const r = rng(H.seed * 7 + 3);
+    const { cx, cy, hw, hh } = H;
+    const sk = H.skin, dark = H.skinI >= 4;
+    const skD = mix(shade(sk, 0.76), '#4a1e10', 0.08), skDD = mix(shade(sk, 0.55), '#2a0e06', 0.12), skL = mix(sk, '#fff1e2', dark ? 0.16 : 0.26);
+    const hc0 = H.hairC, hc = H.grey ? mix(hc0, '#c9c9c4', H.grey) : hc0;
+    const hcDark = lum(hc) < 0.03;
+    const hcL = hcDark ? mix(hc, '#7d8796', 0.42) : mix(hc, '#fff6e0', 0.32), hcD = shade(hc, 0.55);
+    const age = H.age || 27, older = clamp((age - 28) / 30, 0, 1);
+    const cheek = r(), chin = r();
+    const fat = H.fat || 0;
+    // face outline: right half, top to chin, then mirrored
+    const jx = clamp(0.86 + (H.jaw - 1) * 0.45 + fat * 0.08, 0.8, 0.98), chx = 0.3 + chin * 0.12 + fat * 0.05;
+    const half = [[0, -1], [0.58, -0.94], [0.9, -0.7], [0.99, -0.4], [1.0, -0.12], [0.985 + cheek * 0.02 + fat * 0.03, 0.12], [jx + 0.03, 0.42], [jx, 0.62], [(jx + chx) / 2 + 0.05, 0.86], [chx, 0.975], [0, 1.0]];
+    const fpts = [...half.map(([x, y]) => [cx + x * hw, cy + y * hh]), ...half.slice(1, -1).reverse().map(([x, y]) => [cx - x * hw, cy + y * hh])];
+    const faceD = cr(fpts);
+    const ey = cy - 0.03 * hh, ex = hw * 0.41 * H.eyeGap, ew = hw * (0.205 + r() * 0.02), eh = hh * (0.056 + r() * 0.01);
+    const by = ey - hh * (0.14 + r() * 0.025), nb = cy + hh * (0.4 + r() * 0.04), my = cy + hh * (0.615 + r() * 0.03);
+    const nw = hw * 0.19 * (0.85 + (H.nose - 0.8) * 0.5) + (dark ? hw * 0.04 : 0), mw = hw * (0.34 + r() * 0.06) * (0.94 + (H.jaw - 1) * 0.3);
+    const out = { back: '', ears: '', face: '', top: '', faceD, ey, ex, ew, eh, by, nb, my, mw, nw, hw, hh, hc, hcL, hcD, skD, skDD, skL, chinY: cy + hh, fpts };
+    const rim = H.rim || '#cfe3ff';
+    const hairline = cy - hh * (0.58 - (H.recede || 0) * 0.22);
+
+    // ---- skull reference for hair ----
+    const sky = cy - 0.12 * hh, srx = hw * 1.01, sry = hh * 0.88;
+    const skull = (a, k = 0, kx) => [cx + srx * (1 + (kx == null ? k : kx)) * Math.cos(a), sky + sry * (1 + k) * Math.sin(a)];
+    const arc = (a0, a1, k, kx, n = 18, jit) => { const o = []; for (let i = 0; i <= n; i++) { const a = a0 + (a1 - a0) * i / n, j = jit ? 1 + jit(i, a) : 1; const p = skull(a, k * j, kx == null ? null : kx * j); o.push(p); } return o; };
+    // hairline: sideburn, temple, front, mirrored
+    const rec = H.recede || 0;
+    const hl = side => [[cx + side * hw * 0.985, ey + hh * 0.02], [cx + side * hw * 0.97, ey - hh * 0.2], [cx + side * hw * (0.86 - rec * 0.25), hairline + hh * (0.1 + rec * 0.04)], [cx + side * hw * (0.5 - rec * 0.1), hairline - hh * (0.01 - rec * 0.03)]];
+    const hairlinePts = [...hl(-1), [cx, hairline + hh * 0.015 * (H.peak ? -1 : 1)], ...hl(1).reverse()];
+    const massD = (k, kx, jit, sideDrop = 0) => {
+      const o = arc(Math.PI * 0.98, Math.PI * 2.02, k, kx, 24, jit);
+      o[0][1] += sideDrop; o[o.length - 1][1] += sideDrop;
+      return cr([[cx - hw * 1.0, ey + hh * 0.03], ...o, [cx + hw * 1.0, ey + hh * 0.03], ...hairlinePts.slice().reverse().slice(1, -1)], true, 0.9);
+    };
+    // strand texture inside a clip
+    const strands = (clipD, n, opt = {}) => {
+      const cl = X.clip(clipD); let s = '';
+      for (let i = 0; i < n; i++) {
+        const a = Math.PI * (1.0 + r()), k = opt.k0 != null ? opt.k0 + r() * (opt.k1 - opt.k0) : -0.25 + r() * 0.35;
+        const p = skull(a, k), len = (opt.len || 14) * (0.6 + r() * 0.8);
+        let dx = Math.cos(a), dy = Math.sin(a);
+        if (opt.dir === 'back') { dx = -Math.sin(a) * 0.25 + Math.cos(a) * 0.7; dy = Math.sin(a) * 0.8 - 0.4; }
+        if (opt.dir === 'down') { dx = Math.cos(a) * 0.25; dy = 1; }
+        if (opt.dir === 'side') { dx = 1; dy = -0.15 + Math.cos(a) * 0.2; }
+        const m = Math.hypot(dx, dy) || 1; dx /= m; dy /= m;
+        const curl = (opt.curl || 0.2) * (r() - 0.5) * len;
+        const q = [p[0] + dx * len, p[1] + dy * len], c = [(p[0] + q[0]) / 2 - dy * curl, (p[1] + q[1]) / 2 + dx * curl];
+        const lightSide = p[0] < cx;
+        s += P(`M${pt(p)}Q${pt(c)} ${pt(q)}`, { stroke: r() < (lightSide ? 0.6 : 0.35) ? hcL : hcD, 'stroke-width': f((opt.w || 1.3) * (0.6 + r() * 0.8)), 'stroke-linecap': 'round', fill: 'none', opacity: f(0.25 + r() * 0.35) });
+      }
+      return G({ 'clip-path': cl }, s);
+    };
+    const shadeMass = (d, o = {}) => {
+      // base + soft light from upper left + darker lower right + crisp edge
+      const fill = X.lin([[0, mix(hc, hcL, hcDark ? 0.35 : 0.6)], [0.4, hc], [1, hcD]], 0.15, 0, 0.85, 1);
+      return P(d, { fill, filter: X.blur(0.7) }) + P(d, { fill, opacity: 0.85 }) + (o.sheen !== false ? P(d, { fill: X.rad([[0, '#ffffff', hcDark ? 0.1 : 0.2], [1, '#ffffff', 0]], 0.32, 0.18, 0.4), 'clip-path': X.clip(d) }) : '');
+    };
+    const buzzMass = (d, dens = 1.2, op = 0.85) => P(d, { fill: hc, opacity: f(op * (hcDark ? 0.45 : 0.22)), filter: X.blur(1.6) }) + P(d, { fill: '#000', filter: X.noise(hc, 1.6, dens, H.seed), opacity: op });
+
+    // ---- volumetric hair helpers ----
+    const ballG = X.rad([[0, mix(hc, hcL, hcDark ? 0.75 : 0.6)], [0.45, hc], [1, hcD]], 0.36, 0.3, 0.72);
+    const lightOver = d => P(d, { fill: X.lin([[0, '#ffffff', 0.1], [0.42, '#ffffff', 0], [0.58, '#000', 0], [1, '#000', 0.42]], 0, 0, 1, 0.75) });
+    const edgeAO = (d, w = 6, op = 0.3) => P(d, { fill: 'none', stroke: '#000', 'stroke-width': w, opacity: op, filter: X.blur(w * 0.6), 'clip-path': X.clip(d) });
+    const sheen = (d, k = -0.12, a0 = 1.18, a1 = 1.62, w = 7, op = 0.22) => G({ 'clip-path': X.clip(d) }, P(cr(arc(Math.PI * a0, Math.PI * a1, k, null, 10), false), { stroke: '#fff', 'stroke-width': w, fill: 'none', opacity: hcDark ? op * 0.7 : op, filter: X.blur(w * 0.45), 'stroke-linecap': 'round' }));
+    // clumps of hair: tapered locks lit from the upper left, drawn back to front
+    const locks = (clipD, n, flow, o = {}) => {
+      const L0 = o.len || 10, W0 = o.w || 4, k0 = o.k0 != null ? o.k0 : -0.3, k1 = o.k1 != null ? o.k1 : 0.1, arr = [];
+      for (let i = 0; i < n; i++) {
+        let p;
+        if (o.box) p = [o.box[0] + r() * (o.box[2] - o.box[0]), o.box[1] + r() * (o.box[3] - o.box[1])];
+        else p = skull(Math.PI * ((o.a0 || 1.0) + r() * ((o.a1 || 2.0) - (o.a0 || 1.0))), k0 + r() * (k1 - k0));
+        let [dx, dy] = flow(p); const m = Math.hypot(dx, dy) || 1; dx /= m; dy /= m;
+        arr.push({ p, dx, dy, L: L0 * (0.65 + r() * 0.7), w: W0 * (0.7 + r() * 0.6), bend: (r() - 0.5), j: r() });
+      }
+      arr.sort((u, v) => u.p[1] - v.p[1]);
+      let out2 = '';
+      for (const q of arr) {
+        const { p, dx, dy, L, w } = q, nx = -dy, ny = dx, b = q.bend * L * 0.3;
+        const tip = [p[0] + dx * L + nx * b, p[1] + dy * L + ny * b];
+        const m1 = [p[0] + dx * L * 0.45 + nx * (w * 0.55 + b * 0.5), p[1] + dy * L * 0.45 + ny * (w * 0.55 + b * 0.5)];
+        const m2 = [p[0] + dx * L * 0.45 - nx * (w * 0.55 - b * 0.5), p[1] + dy * L * 0.45 - ny * (w * 0.55 - b * 0.5)];
+        const r0 = [p[0] + nx * w * 0.32 - dx * 2, p[1] + ny * w * 0.32 - dy * 2], r1 = [p[0] - nx * w * 0.32 - dx * 2, p[1] - ny * w * 0.32 - dy * 2];
+        const d = `M${pt(r0)}Q${pt(m1)} ${pt(tip)}Q${pt(m2)} ${pt(r1)}Z`;
+        const light = clamp(0.55 - (p[0] - cx) / hw * 0.38 - (p[1] - (cy - hh)) / hh * 0.22 + (q.j - 0.5) * 0.3, 0, 1);
+        const col = light > 0.5 ? mix(hc, hcL, (light - 0.5) * (hcDark ? 0.9 : 0.75)) : mix(mix(hcD, hc, 0.45), hc, light * 2);
+        out2 += P(d, { fill: col, stroke: hcD, 'stroke-width': 0.5, 'stroke-opacity': 0.28 }) + P(`M${pt([p[0] + nx * w * 0.15, p[1] + ny * w * 0.15])}Q${pt([(p[0] + tip[0]) / 2 + nx * (b * 0.5 + w * 0.15), (p[1] + tip[1]) / 2 + ny * (b * 0.5 + w * 0.15)])} ${pt(tip)}`, { stroke: light > 0.45 ? hcL : mix(hc, hcL, 0.3), 'stroke-width': 0.8, fill: 'none', opacity: f(0.25 + light * 0.4) });
+      }
+      return G({ 'clip-path': X.clip(clipD) }, G({ filter: X.blur(0.35) }, out2));
+    };
+    // tight curls: shaded little balls, lit once for the whole mass
+    const coils = (clipD, n, rr, o = {}) => {
+      const arr = [];
+      for (let i = 0; i < n; i++) {
+        let p; if (o.box) p = [o.box[0] + r() * (o.box[2] - o.box[0]), o.box[1] + r() * (o.box[3] - o.box[1])]; else p = skull(Math.PI * (1 + r()), (o.k0 != null ? o.k0 : -0.25) + r() * ((o.k1 != null ? o.k1 : 0.12) - (o.k0 != null ? o.k0 : -0.25)));
+        arr.push([p, rr * (0.7 + r() * 0.6), r()]);
+      }
+      arr.sort((u, v) => u[0][1] - v[0][1]);
+      return G({ 'clip-path': X.clip(clipD) }, arr.map(([p, R, j]) => circ(p[0], p[1], R, { fill: ballG }) + P(`M${pt([p[0] - R * 0.55, p[1] + R * 0.1])}a${f(R * 0.6)} ${f(R * 0.6)} 0 1 1 ${f(R * 0.9)} ${f(R * 0.35)}`, { stroke: hcD, 'stroke-width': 0.8, fill: 'none', opacity: 0.55 })).join('') + lightOver(clipD));
+    };
+    // a chain of shaded beads along a curve: twists, braids, locs
+    const chain = (p0, c, p1, w, n, tiltAlt) => {
+      let o2 = '';
+      for (let i = 0; i <= n; i++) {
+        const t = i / n, x = (1 - t) * (1 - t) * p0[0] + 2 * t * (1 - t) * c[0] + t * t * p1[0], y = (1 - t) * (1 - t) * p0[1] + 2 * t * (1 - t) * c[1] + t * t * p1[1];
+        const tx = 2 * (1 - t) * (c[0] - p0[0]) + 2 * t * (p1[0] - c[0]), ty = 2 * (1 - t) * (c[1] - p0[1]) + 2 * t * (p1[1] - c[1]);
+        const ang = Math.atan2(ty, tx) * 180 / Math.PI + (tiltAlt ? (i % 2 ? 28 : -28) : 0), ww = w * (1 - t * 0.25);
+        o2 += ell(x, y, ww * 0.62, ww * 0.42, { fill: ballG, stroke: hcD, 'stroke-width': 0.6, 'stroke-opacity': 0.6, transform: `rotate(${f(ang)} ${f(x)} ${f(y)})` });
+      }
+      return o2;
+    };
+    const softLine = () => P(cr(hairlinePts, false), { stroke: hc, 'stroke-width': 3, fill: 'none', opacity: 0.45, filter: X.blur(1.3) }) + Array.from({ length: 26 }, (_, i) => { const t = (i + 0.5) / 26, idx = t * (hairlinePts.length - 1), k = Math.floor(idx), u = idx - k, a = hairlinePts[k], b = hairlinePts[Math.min(k + 1, hairlinePts.length - 1)], x = a[0] + (b[0] - a[0]) * u, y = a[1] + (b[1] - a[1]) * u; return P(`M${pt([x, y - 2])}l${f((x - cx) / hw * 2 + (r() - 0.5) * 2)} ${f(3 + r() * 3)}`, { stroke: hc, 'stroke-width': 0.8, opacity: 0.5, 'stroke-linecap': 'round' }); }).join('');
+    const crownPt = [cx, cy - hh * 1.15];
+    const fromCrown = p => [p[0] - crownPt[0], p[1] - crownPt[1] + hh * 0.2];
+    const toCrown = p => [(crownPt[0] - p[0]) * 0.6, crownPt[1] - p[1] - hh * 0.3];
+
+    // ---- hair behind the head ----
+    const style = H.hair;
+    let hairFront = '';
+    if (style === 'afro') {
+      const pts = []; const N = 54;
+      for (let i = 0; i < N; i++) {
+        const a = Math.PI * 2 * i / N, j = 1 + 0.03 * Math.sin(a * 11 + H.seed) + r() * 0.03;
+        pts.push([cx + hw * 1.5 * j * Math.cos(a), cy - hh * 0.32 + hh * 0.98 * j * Math.sin(a) * (Math.sin(a) > 0 ? 0.55 : 1)]);
+      }
+      const d = cr(pts);
+      out.back += P(d, { fill: hcD }) + coils(d, 700, 3.6, { box: [cx - hw * 1.6, cy - hh * 1.4, cx + hw * 1.6, cy + hh * 0.3] }) + edgeAO(d, 10, 0.3);
+      // the outer edge stays fuzzy
+      out.back += G({}, pts.map(p => circ(p[0] + (r() - 0.5) * 4, p[1] + (r() - 0.5) * 4, 3 + r() * 2.5, { fill: ballG, opacity: 0.8 })).join(''));
+      hairFront = P(massD(0.1, 0.06), { fill: hcD }) + coils(massD(0.1, 0.06), 160, 3.0, { k0: -0.45, k1: 0.1 });
+    }
+    if (style === 'long' || style === 'flow') {
+      const len = style === 'flow' ? 0.85 : 1.35, wid = style === 'flow' ? 1.12 : 1.2;
+      const d = cr([[cx - hw * wid, cy - hh * 0.5], [cx - hw * (wid + 0.05), cy + hh * 0.2], [cx - hw * (wid + 0.06), cy + hh * len], [cx - hw * 0.5, cy + hh * (len + 0.1)], [cx + hw * 0.5, cy + hh * (len + 0.1)], [cx + hw * (wid + 0.06), cy + hh * len], [cx + hw * (wid + 0.05), cy + hh * 0.2], [cx + hw * wid, cy - hh * 0.5], [cx, cy - hh * 1.05]]);
+      out.back += P(d, { fill: mix(hcD, hc, 0.3) }) + locks(d, 300, p => [(p[0] - cx) * 0.08, 1], { box: [cx - hw * 1.3, cy - hh * 0.8, cx + hw * 1.3, cy + hh * (len + 0.1)], len: 42, w: 6.5 }) + lightOver(d) + P(d, { fill: '#000', opacity: 0.35, filter: X.blur(8), 'clip-path': X.clip(d), transform: 'scale(1 1)' }).replace('opacity="0.35"', 'opacity="0.22"');
+    }
+    if (style === 'locs') {
+      const len = 1.55;
+      let sR = '';
+      for (let i = 0; i < 20; i++) {
+        const side = i % 2 ? 1 : -1, k = Math.floor(i / 2) / 9;
+        const x0 = cx + side * hw * (0.5 + k * 0.5), y0 = cy - hh * (0.8 - k * 0.6), x1 = cx + side * hw * (0.78 + k * 0.48 + r() * 0.1), y1 = cy + hh * (len - r() * 0.3);
+        sR += chain([x0, y0], [cx + side * hw * (1.22 + k * 0.1), (y0 + y1) / 2], [x1, y1], 10.5, 16, false);
+      }
+      out.back += G({}, sR);
+    }
+
+    // ---- ears ----
+    for (const s of [-1, 1]) {
+      const x0 = cx + s * hw * 0.95, top = by - hh * 0.03, yb = nb + hh * 0.03, w = hw * 0.2 * H.ears;
+      const d = `M${pt([x0, top + 4])}C${pt([x0 + s * w * 1.15, top - 6])} ${pt([x0 + s * w * 1.3, top + (yb - top) * 0.45])} ${pt([x0 + s * w * 0.72, yb - (yb - top) * 0.12])}C${pt([x0 + s * w * 0.45, yb + 3])} ${pt([x0 + s * w * 0.05, yb + 1])} ${pt([x0 - s * 2, yb - 5])}Z`;
+      const cl = X.clip(d);
+      out.ears += P(d, { fill: s < 0 ? sk : mix(sk, skD, 0.45) }) +
+        G({ 'clip-path': cl }, P(`M${pt([x0 + s * w * 0.25, top + 8])}C${pt([x0 + s * w * 0.95, top + 2])} ${pt([x0 + s * w * 1.0, top + (yb - top) * 0.5])} ${pt([x0 + s * w * 0.55, yb - (yb - top) * 0.2])}`, { stroke: skDD, 'stroke-width': 3, fill: 'none', opacity: 0.45, filter: X.blur(1) }) +
+          ell(x0 + s * w * 0.35, top + (yb - top) * 0.52, w * 0.28, (yb - top) * 0.2, { fill: skDD, opacity: 0.4, filter: X.blur(2.5) }) +
+          ell(x0 + s * w * 0.75, top + (yb - top) * 0.3, w * 0.25, (yb - top) * 0.22, { fill: dark ? skL : '#d46a5a', opacity: dark ? 0.2 : 0.18, filter: X.blur(3) }) +
+          P(d, { fill: 'none', stroke: s > 0 ? rim : skL, 'stroke-width': 2, opacity: s > 0 ? 0.35 : 0.25, filter: X.blur(1) }));
+    }
+
+    // ---- face skin and modelling ----
+    const cl = X.clip(faceD), mod = [];
+    const sh = (shape, col, op, b) => shape.replace(/^<(\w+)/, `<$1 fill="${col}" opacity="${op}"${b ? ` filter="${X.blur(b)}"` : ''}`);
+    mod.push(P(faceD, { fill: X.rad([[0, mix(sk, skL, 0.35)], [0.6, sk], [1, mix(sk, skD, 0.4)]], 0.4, 0.38, 0.7) }));
+    mod.push(P(faceD, { fill: 'none', stroke: skD, 'stroke-width': f(hw * 0.38), opacity: 0.55, filter: X.blur(f(hw * 0.13)) }));
+    mod.push(sh(ell(cx + hw * 0.88, cy + hh * 0.08, hw * 0.5, hh * 1.1), skD, 0.5, 11));
+    mod.push(sh(ell(cx + hw * 1.02, cy + hh * 0.1, hw * 0.22, hh * 0.95), skDD, 0.35, 8));
+    mod.push(sh(ell(cx - hw * 0.62, cy - hh * 0.1, hw * 0.35, hh * 0.7), skL, 0.18, 14));
+    const lowerEdge = cr(fpts.slice(6, 15), false);
+    mod.push(P(lowerEdge, { stroke: skDD, 'stroke-width': 12, fill: 'none', opacity: 0.4, filter: X.blur(5) }));
+    for (const s of [-1, 1]) {
+      const R = s > 0;
+      mod.push(sh(ell(cx + s * hw * 0.96, by - hh * 0.06, hw * 0.2, hh * 0.24), skD, R ? 0.45 : 0.28, 7));
+      // orbit: soft socket under the brow, lighter lid, faint under-eye
+      mod.push(sh(ell(cx + s * ex * 1.02, ey - eh * 1.2, ew * 1.35, eh * 2.0), skDD, R ? 0.3 : 0.22, 4.5));
+      mod.push(sh(ell(cx + s * (ex - ew * 0.75), ey - eh * 0.2, ew * 0.35, eh * 1.4), skDD, 0.22, 3));
+      mod.push(sh(ell(cx + s * ex, ey + eh * 2.5, ew * 0.95, eh * 0.85), skD, 0.2 + older * 0.2, 3));
+      // cheekbone plane and the hollow under it
+      mod.push(sh(ell(cx + s * hw * 0.54, ey + hh * 0.2, hw * 0.24, hh * 0.075), skL, R ? 0.18 : 0.42, 5));
+      mod.push(sh(ell(cx + s * hw * 0.72, cy + hh * 0.44, hw * 0.17, hh * 0.2), skD, R ? 0.42 : 0.18 + fat * 0.1, 8));
+      mod.push(sh(ell(cx + s * hw * 0.5, ey + hh * 0.33, hw * 0.24, hh * 0.15), dark ? '#7a2a20' : '#c9524a', dark ? 0.07 : 0.12, 9));
+    }
+    mod.push(sh(ell(cx - hw * 0.18, cy - hh * 0.6, hw * 0.46, hh * 0.18), skL, 0.42, 10));
+    mod.push(sh(ell(cx, by - hh * 0.01, hw * 0.12, hh * 0.05), skL, 0.25, 3));
+    // nose bridge: lit left plane, shadowed right plane
+    mod.push(sh(ell(cx - hw * 0.025, ey + hh * 0.17, hw * 0.04, hh * 0.18), skL, 0.5, 2.2));
+    mod.push(P(`M${pt([cx + hw * 0.09, ey - eh * 0.5])}Q${pt([cx + nw * 0.62, ey + hh * 0.2])} ${pt([cx + nw * 0.9, nb - hh * 0.09])}`, { stroke: skDD, 'stroke-width': 7, fill: 'none', opacity: 0.3, filter: X.blur(3.5) }));
+    mod.push(P(`M${pt([cx - hw * 0.09, ey - eh * 0.5])}Q${pt([cx - nw * 0.6, ey + hh * 0.2])} ${pt([cx - nw * 0.9, nb - hh * 0.09])}`, { stroke: skDD, 'stroke-width': 5, fill: 'none', opacity: 0.13, filter: X.blur(3) }));
+    mod.push(sh(ell(cx + hw * 0.03, nb + hh * 0.045, nw * 1.05, hh * 0.035), skDD, 0.36, 3));
+    mod.push(sh(ell(cx + hw * 0.02, my + hh * 0.13, mw * 0.5, hh * 0.04), skDD, 0.34, 3));
+    mod.push(sh(ell(cx - hw * 0.05, cy + hh * 0.86, hw * 0.17, hh * 0.06), skL, 0.36, 4));
+    if (!dark) mod.push(sh(ell(cx, nb - hh * 0.05, nw * 0.7, hh * 0.06), '#c95a50', 0.1, 4));
+    const spec = dark ? 0.2 : 0.13;
+    mod.push(sh(ell(cx - hw * 0.28, cy - hh * 0.55, hw * 0.22, hh * 0.08), '#ffffff', spec, 6));
+    mod.push(sh(ell(cx - hw * 0.5, ey + hh * 0.17, hw * 0.12, hh * 0.035), '#ffffff', spec * 0.9, 3.5));
+    mod.push(sh(ell(cx - hw * 0.02, ey + hh * 0.22, hw * 0.022, hh * 0.1), '#ffffff', spec * 1.1, 1.6));
+    mod.push(sh(ell(cx - hw * 0.08, cy + hh * 0.88, hw * 0.1, hh * 0.035), '#ffffff', spec * 0.8, 3));
+    // nasolabial folds and age lines
+    for (const s of [-1, 1]) {
+      const o = 0.1 + older * 0.35 + fat * 0.1;
+      mod.push(P(`M${pt([cx + s * (nw + hw * 0.08), nb - hh * 0.03])}Q${pt([cx + s * (mw + hw * 0.12), my - hh * 0.08])} ${pt([cx + s * (mw + hw * 0.08), my + hh * 0.08])}`, { stroke: skDD, 'stroke-width': 2.4, fill: 'none', opacity: f(o * (s > 0 ? 1.2 : 0.8)), filter: X.blur(1.3) }));
+      mod.push(P(`M${pt([cx + s * (nw + hw * 0.1), nb - hh * 0.035])}Q${pt([cx + s * (mw + hw * 0.15), my - hh * 0.08])} ${pt([cx + s * (mw + hw * 0.11), my + hh * 0.08])}`, { stroke: skL, 'stroke-width': 2, fill: 'none', opacity: f(o * 0.6), filter: X.blur(1.3) }));
+    }
+    if (older > 0.15) for (let i = 0; i < 3; i++) mod.push(P(`M${pt([cx - hw * (0.45 - i * 0.05), by - hh * (0.12 + i * 0.075)])}Q${pt([cx, by - hh * (0.15 + i * 0.075) - 2])} ${pt([cx + hw * (0.45 - i * 0.05), by - hh * (0.12 + i * 0.075)])}`, { stroke: skDD, 'stroke-width': 1.4, fill: 'none', opacity: f(older * 0.45), filter: X.blur(0.7) }));
+    mod.push(E('rect', { x: f(cx - hw * 1.2), y: f(cy - hh * 1.1), width: f(hw * 2.4), height: f(hh * 2.3), fill: '#000', filter: X.grain(H.seed, dark ? 0.3 : 0.16) }));
+    mod.push(P(faceD, { fill: 'none', stroke: rim, 'stroke-width': 3, opacity: 0.0 }));
+    // rim light on the shadow side
+    mod.push(P(`M${pt([cx + hw * 0.6, cy - hh * 0.9])}Q${pt([cx + hw * 1.08, cy - hh * 0.2])} ${pt([cx + hw * 0.92, cy + hh * 0.5])}`, { stroke: rim, 'stroke-width': 4, fill: 'none', opacity: 0.32, filter: X.blur(2.2) }));
+    out.face = G({ 'clip-path': cl }, mod.join(''));
+
+    // ---- eyes ----
+    const irisC = H.iris || '#3a2414';
+    let eyes = '';
+    const tilt = (r() - 0.35) * eh * 0.45;
+    const sclera = dark ? [[0, '#ece4d9'], [0.65, '#d2c5b6'], [1, '#a8988a']] : [[0, '#f2ede7'], [0.65, '#ddd3c9'], [1, '#b8aa9d']];
+    for (const s of [-1, 1]) {
+      const x = cx + s * ex, sl = H.sleepy || 0;
+      const inn = [x - s * ew, ey + eh * 0.2], outr = [x + s * ew, ey - tilt];
+      const top1 = [x - s * ew * 0.42, ey - eh * (1.6 - sl * 0.3)], top2 = [x + s * ew * 0.48, ey - eh * (1.4 - sl * 0.3)];
+      const bot1 = [x + s * ew * 0.5, ey + eh * 0.95], bot2 = [x - s * ew * 0.42, ey + eh * 1.08];
+      const eyeD = `M${pt(inn)}C${pt(top1)} ${pt(top2)} ${pt(outr)}C${pt(bot1)} ${pt(bot2)} ${pt(inn)}Z`;
+      const ecl = X.clip(eyeD);
+      const ir = eh * 1.3, ix = x + s * ew * 0.03 + (H.look || 0) * ew * 0.15, iy = ey + eh * 0.12;
+      // lid crease
+      eyes += P(`M${pt([inn[0] + s * ew * 0.05, inn[1] - eh * 0.9])}C${pt([x - s * ew * 0.35, ey - eh * 2.75])} ${pt([x + s * ew * 0.55, ey - eh * 2.55])} ${pt([outr[0] + s * ew * 0.12, outr[1] - eh * 0.9])}`, { stroke: skDD, 'stroke-width': 1.5, fill: 'none', opacity: 0.42, filter: X.blur(0.7) });
+      eyes += P(`M${pt([inn[0] + s * ew * 0.1, inn[1] - eh * 1.15])}C${pt([x - s * ew * 0.35, ey - eh * 3.05])} ${pt([x + s * ew * 0.55, ey - eh * 2.85])} ${pt([outr[0] + s * ew * 0.05, outr[1] - eh * 1.2])}`, { stroke: skL, 'stroke-width': 1.6, fill: 'none', opacity: 0.25, filter: X.blur(1) });
+      eyes += P(eyeD, { fill: X.rad(sclera, 0.5, 0.6, 0.62) });
+      let streaks = '';
+      for (let k = 0; k < 14; k++) { const a = k / 14 * Math.PI * 2 + r() * 0.2; streaks += P(`M${pt([ix + Math.cos(a) * ir * 0.45, iy + Math.sin(a) * ir * 0.45])}L${pt([ix + Math.cos(a) * ir * 0.9, iy + Math.sin(a) * ir * 0.9])}`, { stroke: mix(irisC, '#e0b070', 0.45), 'stroke-width': 0.7, opacity: 0.35 }); }
+      eyes += G({ 'clip-path': ecl },
+        circ(ix, iy, ir, { fill: X.rad([[0, mix(irisC, '#d29a52', 0.4)], [0.45, mix(irisC, '#b27a3e', 0.2)], [0.8, irisC], [0.94, shade(irisC, 0.5)], [1, '#140b06']], 0.5, 0.5, 0.5, false, 0.5, 0.62) }) + streaks +
+        circ(ix, iy, ir * 0.4, { fill: '#090504' }) +
+        E('rect', { x: f(x - ew * 1.2), y: f(ey - eh * 2), width: f(ew * 2.4), height: f(eh * 4), fill: X.lin([[0, '#2a160c', 0.6], [0.45, '#2a160c', 0.12], [0.6, '#2a160c', 0]]) }) +
+        circ(ix - ir * 0.3, iy - ir * 0.36, ir * 0.2, { fill: '#fff', opacity: 0.92 }) +
+        circ(ix + ir * 0.34, iy + ir * 0.3, ir * 0.08, { fill: '#fff', opacity: 0.4 }));
+      // lash line: thin at the inner corner, fuller toward the outer corner
+      eyes += P(`M${pt(inn)}C${pt(top1)} ${pt(top2)} ${pt(outr)}`, { stroke: '#2a170d', 'stroke-width': 1.5, fill: 'none', 'stroke-linecap': 'round' });
+      eyes += P(`M${pt([x - s * ew * 0.1, ey - eh * 1.48])}C${pt([top2[0], top2[1] - 0.4])} ${pt([outr[0] - s * 1, outr[1] - 1])} ${pt([outr[0] + s * 1.6, outr[1] - 1.4])}`, { stroke: '#1d0f08', 'stroke-width': 2.2, fill: 'none', 'stroke-linecap': 'round' });
+      for (let k = 0; k < 3; k++) eyes += P(`M${pt([outr[0] - s * k * 2.4, outr[1] - 0.8 - k * 0.6])}l${f(s * 2.4)} ${f(-1.8 - k * 0.3)}`, { stroke: '#1d0f08', 'stroke-width': 0.8, opacity: 0.7, 'stroke-linecap': 'round' });
+      // lower lid: wet rim, then the lid edge
+      eyes += P(`M${pt([inn[0] + s * 1.5, inn[1] + 0.6])}C${pt([bot2[0], bot2[1] + 0.2])} ${pt([bot1[0], bot1[1] + 0.2])} ${pt([outr[0] - s * 0.5, outr[1] + 0.6])}`, { stroke: '#e8c2b6', 'stroke-width': 1.1, fill: 'none', opacity: dark ? 0.35 : 0.6 });
+      eyes += P(`M${pt([inn[0] + s * 2, inn[1] + 1.8])}C${pt([bot2[0], bot2[1] + 1.8])} ${pt([bot1[0], bot1[1] + 1.6])} ${pt([outr[0] - s * 1, outr[1] + 1.5])}`, { stroke: skDD, 'stroke-width': 1, fill: 'none', opacity: 0.4, filter: X.blur(0.5) });
+      eyes += ell(inn[0] + s * 1.6, inn[1] + 0.2, 1.9, 1.5, { fill: '#cf8478', opacity: 0.6 });
+      if (older > 0.2 || H.tired) eyes += P(`M${pt([x - s * ew * 0.7, ey + eh * 2.1])}Q${pt([x, ey + eh * 3.1])} ${pt([x + s * ew * 0.95, ey + eh * 1.7])}`, { stroke: skDD, 'stroke-width': 1.3, fill: 'none', opacity: f(0.18 + older * 0.3), filter: X.blur(0.8) });
+      if (older > 0.25) for (let k = 0; k < 3; k++) eyes += P(`M${pt([outr[0] + s * 3, outr[1] - 2 + k * 3.2])}l${f(s * (5 + k))} ${f(-1.5 + k * 1.6)}`, { stroke: skDD, 'stroke-width': 0.9, opacity: f(older * 0.5), fill: 'none' });
+      if (H.eyeBlack) {
+        const d = `M${pt([x - ew * 0.78, ey + eh * 3.0])}Q${pt([x, ey + eh * 2.7])} ${pt([x + ew * 0.78, ey + eh * 3.0])}L${pt([x + ew * 0.68, ey + eh * 4.9])}Q${pt([x, ey + eh * 5.2])} ${pt([x - ew * 0.68, ey + eh * 4.9])}Z`;
+        eyes += P(d, { fill: '#0e0f12', opacity: 0.94 }) + P(d, { fill: X.lin([[0, '#fff', 0.22], [0.5, '#fff', 0], [1, '#fff', 0]], 0, 0, 1, 1), 'clip-path': X.clip(d) });
+      }
+    }
+    // brows: a soft base with hair strokes that rise at the inner end and lie flat toward the tail
+    let brows = '';
+    const browC = H.grey > 0.4 ? mix(hc, '#6b6b66', 0.3) : hcDark ? mix(hc0, '#000', 0.1) : mix(hc0, '#2e1e12', 0.45);
+    const bt = hh * (0.038 + 0.03 * (H.brow - 0.7) / 0.6), arch = hh * (0.012 + r() * 0.02);
+    const tiltB = H.angry ? hh * 0.06 : H.mood > 0 ? -hh * 0.015 : H.mood < 0 ? hh * 0.02 : 0;
+    for (const s of [-1, 1]) {
+      const i0 = [cx + s * hw * 0.11, by + bt * 0.35 + tiltB], pk = [cx + s * hw * 0.5, by - arch - tiltB * 0.15], o0 = [cx + s * hw * 0.8, by + hh * 0.03 - tiltB * 0.2];
+      const spine = t => t < 0.62 ? (u => [i0[0] + (pk[0] - i0[0]) * u, i0[1] + (pk[1] - i0[1]) * u - Math.sin(u * Math.PI) * arch * 0.25])(t / 0.62) : (u => [pk[0] + (o0[0] - pk[0]) * u, pk[1] + (o0[1] - pk[1]) * u * u])((t - 0.62) / 0.38);
+      const thick = t => bt * (t < 0.15 ? 0.85 + t : t < 0.62 ? 1 : 1 - (t - 0.62) / 0.38 * 0.75);
+      const top = [], bot = [];
+      for (let k = 0; k <= 10; k++) { const t = k / 10, p = spine(t), th = thick(t); top.push([p[0], p[1] - th * 0.5]); bot.push([p[0], p[1] + th * 0.55]); }
+      const d = cr([...top, ...bot.reverse()], true, 0.6);
+      brows += P(d, { fill: browC, opacity: 0.4, filter: X.blur(1.3) }) + P(d, { fill: browC, opacity: 0.28 });
+      for (let k = 0; k < 46; k++) {
+        const t = r(), p = spine(t), th = thick(t), off = (r() - 0.5) * th * 0.9;
+        const ang = t < 0.25 ? -1.25 + t * 1.6 : -0.5 + (t - 0.25) * 0.55, L = th * (0.9 + r() * 0.6);
+        const dx = Math.cos(ang) * L * s, dy = Math.sin(ang) * L;
+        brows += P(`M${pt([p[0] - dx * 0.4, p[1] + off - dy * 0.4])}l${f(dx)} ${f(dy)}`, { stroke: r() < 0.3 ? shade(browC, 0.6) : browC, 'stroke-width': f(0.7 + r() * 0.5), opacity: f(0.5 + r() * 0.35), 'stroke-linecap': 'round' });
+      }
+    }
+    if (H.angry) for (const s2 of [-1, 1]) brows += P(`M${pt([cx + s2 * hw * 0.06, by - 2])}q${s2 * -1} 7 ${s2 * 1} 12`, { stroke: skDD, 'stroke-width': 1.5, fill: 'none', opacity: 0.45, filter: X.blur(0.6) });
+    // nose: tip, wings, nostrils
+    let nose = '';
+    const nt = nb - hh * 0.05;
+    nose += ell(cx - nw * 0.1, nt - hh * 0.015, nw * 0.36, hh * 0.04, { fill: skL, opacity: 0.55, filter: X.blur(2) });
+    nose += ell(cx - nw * 0.15, nt - hh * 0.02, nw * 0.12, hh * 0.014, { fill: '#fff', opacity: dark ? 0.18 : 0.22, filter: X.blur(0.8) });
+    for (const s of [-1, 1]) {
+      const R = s > 0;
+      const wing = `M${pt([cx + s * nw * 0.45, nt - hh * 0.065])}C${pt([cx + s * nw * 1.12, nt - hh * 0.08])} ${pt([cx + s * nw * 1.22, nb + hh * 0.005])} ${pt([cx + s * nw * 0.62, nb + hh * 0.012])}`;
+      nose += ell(cx + s * nw * 0.78, nb - hh * 0.03, nw * 0.3, hh * 0.042, { fill: R ? skD : mix(sk, skD, 0.3), opacity: 0.55, filter: X.blur(2) });
+      nose += P(wing, { stroke: skDD, 'stroke-width': 4, fill: 'none', opacity: R ? 0.22 : 0.14, filter: X.blur(2), transform: `translate(${s * 1.5} -1)` });
+      nose += P(wing, { stroke: shade(skDD, 0.9), 'stroke-width': 1.4, fill: 'none', opacity: R ? 0.6 : 0.42, 'stroke-linecap': 'round' });
+      nose += ell(cx + s * nw * 0.4, nb - hh * 0.004, nw * 0.21, hh * 0.014, { fill: '#2b130b', opacity: 0.72, transform: `rotate(${s * 14} ${f(cx + s * nw * 0.4)} ${f(nb)})` });
+    }
+    nose += P(`M${pt([cx - nw * 0.2, nb + hh * 0.008])}Q${pt([cx, nb + hh * 0.03])} ${pt([cx + nw * 0.2, nb + hh * 0.008])}`, { stroke: skDD, 'stroke-width': 1.1, fill: 'none', opacity: 0.35 });
+    // mouth
+    let mouth = '';
+    const lipBase = mix(shade(sk, 0.8), dark ? '#4e211b' : '#a9574f', dark ? 0.22 : 0.34), lipU = shade(lipBase, 0.84), lipLo = mix(lipBase, sk, 0.12);
+    const ut = hh * (0.04 + r() * 0.018) + (dark ? hh * 0.012 : 0), lt = hh * (0.052 + r() * 0.022) + (dark ? hh * 0.014 : 0);
+    const md = (H.mood || 0), cyc = my - md * hh * 0.035;
+    const L0 = [cx - mw, cyc], R0 = [cx + mw, cyc], mid = my + md * hh * 0.03 + 0.5;
+    const upD = `M${pt(L0)}C${pt([cx - mw * 0.7, my - ut * 0.45])} ${pt([cx - mw * 0.4, my - ut * 1.15])} ${pt([cx - mw * 0.16, my - ut * 1.1])}Q${pt([cx, my - ut * 0.95])} ${pt([cx + mw * 0.16, my - ut * 1.1])}C${pt([cx + mw * 0.4, my - ut * 1.15])} ${pt([cx + mw * 0.7, my - ut * 0.45])} ${pt(R0)}Q${pt([cx, mid + 1])} ${pt(L0)}Z`;
+    const loD = `M${pt(L0)}Q${pt([cx, mid + 1])} ${pt(R0)}C${pt([cx + mw * 0.65, my + lt * 1.25])} ${pt([cx + mw * 0.25, my + lt * 1.5])} ${pt([cx, my + lt * 1.5])}C${pt([cx - mw * 0.25, my + lt * 1.5])} ${pt([cx - mw * 0.65, my + lt * 1.25])} ${pt(L0)}Z`;
+    // philtrum
+    mouth += P(`M${pt([cx - hw * 0.055, nb + hh * 0.05])}L${pt([cx - mw * 0.15, my - ut * 1.05])}`, { stroke: skL, 'stroke-width': 1.8, opacity: 0.3, filter: X.blur(1) }) + P(`M${pt([cx + hw * 0.055, nb + hh * 0.05])}L${pt([cx + mw * 0.15, my - ut * 1.05])}`, { stroke: skD, 'stroke-width': 1.8, opacity: 0.35, filter: X.blur(1) }) + ell(cx, (nb + my) / 2 + hh * 0.01, hw * 0.035, hh * 0.05, { fill: skD, opacity: 0.18, filter: X.blur(1.5) });
+    mouth += P(loD, { fill: X.lin([[0, shade(lipLo, 0.82)], [0.45, lipLo], [1, shade(lipLo, 0.9)]]) }) + ell(cx - mw * 0.12, my + lt * 0.7, mw * 0.3, lt * 0.24, { fill: '#fff', opacity: 0.22, filter: X.blur(1.4) });
+    mouth += P(upD, { fill: X.lin([[0, shade(lipU, 0.95)], [1, shade(lipU, 0.78)]]) }) + P(`M${pt([cx - mw * 0.65, my - ut * 0.7])}C${pt([cx - mw * 0.4, my - ut * 1.25])} ${pt([cx - mw * 0.2, my - ut * 1.2])} ${pt([cx, my - ut * 1.0])}C${pt([cx + mw * 0.2, my - ut * 1.2])} ${pt([cx + mw * 0.4, my - ut * 1.25])} ${pt([cx + mw * 0.65, my - ut * 0.7])}`, { stroke: skL, 'stroke-width': 1.2, fill: 'none', opacity: 0.4 });
+    if (md > 0 && H.teeth) mouth += P(`M${pt([cx - mw * 0.7, mid - 0.4])}Q${pt([cx, mid + hh * 0.035])} ${pt([cx + mw * 0.7, mid - 0.4])}Q${pt([cx, mid + 0.8])} ${pt([cx - mw * 0.7, mid - 0.4])}Z`, { fill: '#ece5da' });
+    mouth += P(`M${pt([L0[0] - 1, L0[1] - 0.2])}Q${pt([cx, mid + 1.2])} ${pt([R0[0] + 1, R0[1] - 0.2])}`, { stroke: '#2e110c', 'stroke-width': 1.3, fill: 'none', 'stroke-linecap': 'round', opacity: 0.7 });
+    mouth += P(`M${pt([cx - mw * 0.55, (L0[1] + mid) / 2 + 0.5])}Q${pt([cx, mid + 1.4])} ${pt([cx + mw * 0.55, (R0[1] + mid) / 2 + 0.5])}`, { stroke: '#1e0806', 'stroke-width': 1.5, fill: 'none', 'stroke-linecap': 'round', opacity: 0.6 });
+    for (const s of [-1, 1]) mouth += circ(cx + s * (mw + 1.2), cyc + 0.4, 2.4, { fill: skDD, opacity: 0.32, filter: X.blur(1.3) }) + (md > 0 ? P(`M${pt([cx + s * (mw + 4), cyc - 6])}q${s * 3} 4 ${s * 1} 9`, { stroke: skDD, 'stroke-width': 1.4, fill: 'none', opacity: 0.3, filter: X.blur(0.8) }) : '');
+
+    // ---- facial hair ----
+    let beard = '';
+    const bStyle = H.beard;
+    const jawLine = (len) => {
+      const lower = [];
+      for (let i = 0; i <= 18; i++) {
+        const t = i / 18, a = Math.PI * (0.03 + t * 0.94), fx = Math.cos(a), dn = Math.sin(a), w = fx >= 0 ? 1 : -1;
+        const yy = cy + hh * (0.0 + 1.0 * dn);
+        const xx = cx + hw * fx * (Math.abs(fx) > 0.82 ? 0.985 : (jx + (1 - jx) * Math.pow(Math.abs(fx), 2.2)));
+        lower.push([xx + w * Math.abs(fx) * len * 0.3, yy + dn * len * (0.25 + 0.75 * dn)]);
+      }
+      return lower;
+    };
+    const beardRegion = (len, upper = 1) => {
+      const up = [[cx + hw * 0.975, ey + hh * 0.0], [cx + hw * 0.84, cy + hh * (0.2 + (1 - upper) * 0.2)], [cx + hw * 0.62, cy + hh * (0.36 + (1 - upper) * 0.1)], [cx + mw + hw * 0.08, my - hh * 0.07], [cx + mw * 0.75, my - ut - hh * 0.035], [cx, nb + hh * 0.075], [cx - mw * 0.75, my - ut - hh * 0.035], [cx - mw - hw * 0.08, my - hh * 0.07], [cx - hw * 0.62, cy + hh * (0.36 + (1 - upper) * 0.1)], [cx - hw * 0.84, cy + hh * (0.2 + (1 - upper) * 0.2)], [cx - hw * 0.975, ey + hh * 0.0]];
+      return cr([...jawLine(len), ...up.slice().reverse()], true, 0.85);
+    };
+    const mustD = (th = 1) => `M${pt([cx - mw - 4, my + 2])}C${pt([cx - mw * 0.95, my - ut - hh * 0.06 * th])} ${pt([cx - mw * 0.4, nb + hh * 0.055])} ${pt([cx, nb + hh * 0.06])}C${pt([cx + mw * 0.4, nb + hh * 0.055])} ${pt([cx + mw * 0.95, my - ut - hh * 0.06 * th])} ${pt([cx + mw + 4, my + 2])}C${pt([cx + mw * 0.8, my - ut * 0.1])} ${pt([cx + mw * 0.35, my - ut * 0.35])} ${pt([cx, my - ut * 0.25])}C${pt([cx - mw * 0.35, my - ut * 0.35])} ${pt([cx - mw * 0.8, my - ut * 0.1])} ${pt([cx - mw - 4, my + 2])}Z`;
+    const lipHole = `M${pt([cx - mw * 0.92, my])}Q${pt([cx, my - 2])} ${pt([cx + mw * 0.92, my])}Q${pt([cx, my + lt * 1.55])} ${pt([cx - mw * 0.92, my])}Z`;
+    const hairTex = (d, n, len, opt = {}) => strands(d, n, Object.assign({ dir: 'down', len, w: 1.1, k0: -0.7, k1: 0.3 }, opt));
+    // a beard mass: soft feathered top edge, coarse texture, darker underside
+    const solid = (d, n, len = 7, eo) => {
+      const fr = eo ? 'evenodd' : null, dd = d + (eo ? lipHole : '');
+      const fill = X.lin([[0, hc, 0.5], [0.3, hc, 0.95], [1, hcD, 1]], 0, ey, 0, cy + hh * 1.3, true);
+      const box = [cx - hw * 1.05, ey - hh * 0.05, cx + hw * 1.05, cy + hh * 1.6];
+      return P(d, { fill, filter: X.blur(1.8), 'fill-rule': fr }) + P(d, { fill: mix(hcD, hc, 0.5), opacity: 0.8, 'fill-rule': fr }) +
+        G({ 'clip-path': X.clip(dd, eo) }, locks(`M0 0H2000V2000H0Z`, Math.round(n * 2.2), p => [(cx - p[0]) * 0.12 / hw * 4, 1], { box, len: len * 1.6, w: 3.2 }) + lightOver(`M${pt([box[0], box[1]])}H${f(box[2])}V${f(box[3])}H${f(box[0])}Z`)) +
+        P(d, { fill: 'none', stroke: hcD, 'stroke-width': 2.5, opacity: 0.3, filter: X.blur(1.5), 'clip-path': X.clip(dd, eo) });
+    };
+    const stubble = (d, dens) => P(d, { fill: hc, opacity: dark ? 0.1 : 0.16, filter: X.blur(2.5), 'fill-rule': 'evenodd' }) + P(d, { fill: '#000', filter: X.noise(hc, 1.9, dens, H.seed + 3), opacity: dark ? 0.75 : 0.6, 'fill-rule': 'evenodd' });
+    let mustache = '';
+    if (bStyle === 'stubble') beard += stubble(beardRegion(1) + lipHole, 0.75);
+    else if (bStyle === 'short') { beard += stubble(beardRegion(4) + lipHole, 1.35) + solid(beardRegion(3) + lipHole, 90, 4, true).replace(/opacity="0.75"/, 'opacity="0.35"'); mustache = stubble(mustD(1), 1.4); }
+    else if (bStyle === 'full' || bStyle === 'long') {
+      const len = bStyle === 'long' ? hh * 0.5 : hh * 0.12;
+      beard += stubble(beardRegion(2) + lipHole, 1.0) + solid(beardRegion(len) + lipHole, bStyle === 'long' ? 260 : 190, bStyle === 'long' ? 18 : 8, true);
+      mustache = solid(mustD(1.25), 50, 5);
+    } else if (bStyle === 'goatee') {
+      const d = `M${pt([cx - mw * 1.0, my + 2])}Q${pt([cx - mw * 1.1, cy + hh * 0.98])} ${pt([cx, cy + hh * 1.07])}Q${pt([cx + mw * 1.1, cy + hh * 0.98])} ${pt([cx + mw * 1.0, my + 2])}Q${pt([cx, my + lt * 1.7])} ${pt([cx - mw * 1.0, my + 2])}Z`;
+      beard += stubble(beardRegion(1) + lipHole, 0.45) + solid(d, 70, 6); mustache = solid(mustD(1.1), 40, 5);
+    } else if (bStyle === 'mustache') { beard += stubble(beardRegion(1) + lipHole, 0.35); mustache = solid(mustD(1.45), 50, 5); }
+    else if (bStyle === 'horseshoe') {
+      mustache = solid(mustD(1.4), 45, 5);
+      for (const s of [-1, 1]) { const d = cr([[cx + s * (mw - 1), my - 1], [cx + s * (mw + 8), my - 3], [cx + s * (mw + 9), cy + hh * 0.8], [cx + s * (mw + 6), cy + hh * 0.97], [cx + s * (mw - 1), cy + hh * 0.96], [cx + s * (mw + 0), my + 6]], true, 0.7); mustache += solid(d, 18, 6); }
+    } else if (bStyle === 'chin') {
+      const line = cr(jawLine(1.5), false);
+      beard += stubble(beardRegion(1) + lipHole, 0.35) + P(line, { stroke: hc, 'stroke-width': 8, fill: 'none', 'stroke-linecap': 'round', filter: X.blur(1.2), opacity: 0.8 }) + P(line, { stroke: hcD, 'stroke-width': 6, fill: 'none', 'stroke-linecap': 'round', filter: X.noise(hcD, 1.6, 1.8, H.seed + 6) });
+    }
+
+    // ---- hair on top ----
+    const hairShadow = P(cr(hairlinePts, false), { stroke: skDD, 'stroke-width': 8, fill: 'none', opacity: 0.4, filter: X.blur(3.5), 'clip-path': cl });
+    let top = '';
+    const fadeSides = (dens) => { const sideD = massD(0.012, 0.01); return P(sideD, { fill: X.lin([[0, hc, 0.55], [0.55, hc, 0.25], [1, hc, 0.05]], 0, 0, 0, 1), filter: X.blur(1.4) }) + P(sideD, { fill: X.lin([[0, '#000', 1], [0.6, '#000', 0.55], [1, '#000', 0]], 0, 0, 0, 1), filter: X.noise(hc, 1.6, dens, H.seed), opacity: 0.9 }) + lightOver(sideD); };
+    if (style === 'bald') {
+      top += G({ 'clip-path': cl }, ell(cx - hw * 0.3, cy - hh * 0.8, hw * 0.34, hh * 0.12, { fill: '#fff', opacity: dark ? 0.24 : 0.28, filter: X.blur(6) }) + ell(cx - hw * 0.26, cy - hh * 0.84, hw * 0.12, hh * 0.035, { fill: '#fff', opacity: 0.45, filter: X.blur(1.6) }) + ell(cx + hw * 0.55, cy - hh * 0.7, hw * 0.3, hh * 0.3, { fill: skDD, opacity: 0.25, filter: X.blur(10) }));
+    } else if (style === 'buzz') {
+      const d = massD(0.015, 0.012);
+      top += hairShadow + buzzMass(d, 1.25, 0.9) + lightOver(d) + sheen(d, -0.1, 1.2, 1.5, 9, 0.12);
+    } else {
+      top += hairShadow;
+      if (style === 'fade' || style === 'flat' || style === 'mohawk' || style === 'twists') top += fadeSides(style === 'mohawk' ? 0.8 : 1.15);
+      if (style === 'short' || style === 'crew' || style === 'part' || style === 'slick' || style === 'thin' || style === 'fade') {
+        const k = style === 'fade' ? 0.07 : style === 'slick' ? 0.075 : style === 'part' ? 0.09 : style === 'thin' ? 0.025 : 0.07;
+        let d;
+        if (style === 'fade') {
+          const o = arc(Math.PI * 1.13, Math.PI * 1.87, k, 0.0, 18);
+          d = cr([[cx - hw * 0.82, hairline + hh * 0.06], ...o, [cx + hw * 0.82, hairline + hh * 0.06], [cx + hw * 0.45, hairline - hh * 0.01], [cx, hairline + hh * 0.01], [cx - hw * 0.45, hairline - hh * 0.01]], true, 0.9);
+        } else if (style === 'part') d = massD(k, 0.045, (i, a) => Math.cos(a) < -0.2 ? 0.25 : 0);
+        else d = massD(k, style === 'thin' ? 0.01 : 0.045);
+        const partX = cx - hw * 0.42;
+        const flow = style === 'slick' ? toCrown : style === 'part' ? (p => p[0] > partX ? [1, 0.25 + (p[1] - (cy - hh)) / hh * 0.6] : [-0.6, 0.8]) : style === 'thin' ? (p => [p[0] - cx, 1.2 * hh]) : fromCrown;
+        const n = style === 'thin' ? 160 : style === 'slick' ? 340 : 420, len = style === 'slick' ? 32 : style === 'part' ? 24 : style === 'fade' ? 10 : 14;
+        top += P(d, { fill: mix(hcD, hc, 0.4), filter: X.blur(0.8) }) + locks(d, n, flow, { len, w: style === 'slick' ? 4.6 : 4.2, k0: -0.5, k1: 0.12 }) + lightOver(d) + edgeAO(d, 5, 0.22) + sheen(d, style === 'slick' ? -0.08 : -0.14, 1.2, 1.6, style === 'slick' ? 9 : 7, style === 'slick' ? 0.3 : 0.18) + softLine();
+        if (style === 'part') top += P(`M${pt([partX, hairline - 1])}Q${pt([partX - hw * 0.04, cy - hh * 0.85])} ${pt([partX + hw * 0.02, cy - hh * 1.04])}`, { stroke: mix(skD, hcD, 0.3), 'stroke-width': 1.6, fill: 'none', opacity: 0.85 });
+        if (style === 'thin') top += G({ 'clip-path': X.clip(d) }, ell(cx, cy - hh * 0.75, hw * 0.6, hh * 0.28, { fill: sk, opacity: 0.85, filter: X.blur(6) }) + ell(cx - hw * 0.25, cy - hh * 0.82, hw * 0.12, hh * 0.04, { fill: '#fff', opacity: 0.25, filter: X.blur(2) }));
+      } else if (style === 'curly') {
+        const d = massD(0.13, 0.07, (i) => 0.06 * Math.sin(i * 2.4));
+        top += P(d, { fill: hcD }) + coils(d, 380, 3.4, { k0: -0.5, k1: 0.2 }) + edgeAO(d, 5, 0.25) + softLine();
+      } else if (style === 'twists') {
+        const d = massD(0.05, 0.0);
+        top += P(d, { fill: hcD }) + lightOver(d);
+        let tw = '';
+        const tws = [];
+        for (let row = 0; row < 4; row++) for (let i = 0; i < 15 - row * 2; i++) {
+          const span = 0.8 - row * 0.12, a = Math.PI * (1.5 - span / 2 + span * (i + 0.5) / (15 - row * 2)) + (r() - 0.5) * 0.06;
+          tws.push([a, row]);
+        }
+        tws.sort((p, q) => q[1] - p[1]);
+        for (const [a, row] of tws) {
+          const p = skull(a, -0.02 - row * 0.1), Lt = 12 + r() * 6 - row, dx = Math.cos(a) * 0.7 + (r() - 0.5) * 0.3, dy = Math.sin(a) * 0.9 - 0.1;
+          const q = [p[0] + dx * Lt, p[1] + dy * Lt];
+          tw += chain(p, [(p[0] + q[0]) / 2 + (r() - 0.5) * 4, (p[1] + q[1]) / 2], q, 8.5, 4, true);
+        }
+        const twD = massD(0.32, 0.12);
+        top += G({}, tw) + lightOver(twD).replace('<path ', `<path clip-path="${X.clip(twD)}" `);
+      } else if (style === 'braids') {
+        const d = massD(0.03, 0.015);
+        top += P(d, { fill: shade(hcD, 0.8) }) + P(d, { fill: sk, opacity: 0.25 });
+        let br = '';
+        for (let i = 0; i < 7; i++) {
+          const t = (i + 0.5) / 7, x0 = cx + (t - 0.5) * hw * 1.55, a1 = Math.PI * (1.5 + (t - 0.5) * 0.35);
+          const p1 = skull(a1, 0.03), p0 = [x0, hairline + hh * 0.01 + Math.pow(Math.abs(t - 0.5), 2) * hh * 0.4];
+          br += chain(p0, [x0 + (t - 0.5) * hw * 0.4, cy - hh * 0.85], p1, 8.5, 12, true);
+        }
+        top += G({ 'clip-path': X.clip(d) }, br + lightOver(d));
+      } else if (style === 'flat') {
+        const H2 = hh * 0.32, d = cr([[cx - hw * 0.86, hairline + hh * 0.08], [cx - hw * 0.94, cy - hh * 0.7], [cx - hw * 0.9, cy - hh * 1.0 - H2 * 0.92], [cx - hw * 0.5, cy - hh * 1.0 - H2], [cx + hw * 0.5, cy - hh * 1.0 - H2], [cx + hw * 0.9, cy - hh * 1.0 - H2 * 0.92], [cx + hw * 0.94, cy - hh * 0.7], [cx + hw * 0.86, hairline + hh * 0.08], [cx + hw * 0.45, hairline], [cx, hairline + hh * 0.01], [cx - hw * 0.45, hairline]], true, 0.6);
+        top += P(d, { fill: hcD }) + locks(d, 420, () => [0, -1], { box: [cx - hw, cy - hh * 1.35, cx + hw, hairline + 10], len: 12, w: 3.6 }) + lightOver(d) + E('rect', { x: f(cx - hw), y: f(cy - hh * 1.33), width: f(hw * 2), height: 7, fill: hcL, opacity: 0.4, filter: X.blur(2.5), 'clip-path': X.clip(d) }) + edgeAO(d, 5, 0.25);
+      } else if (style === 'mohawk') {
+        const strip = cr([[cx - hw * 0.24, hairline + 3], [cx - hw * 0.3, cy - hh * 0.95], [cx - hw * 0.2, cy - hh * 1.32], [cx + hw * 0.2, cy - hh * 1.32], [cx + hw * 0.3, cy - hh * 0.95], [cx + hw * 0.24, hairline + 3]], true, 0.8);
+        top += P(strip, { fill: hcD, filter: X.blur(0.8) }) + locks(strip, 120, p => [(p[0] - cx) * 0.02, -1], { box: [cx - hw * 0.3, cy - hh * 1.2, cx + hw * 0.3, hairline + 8], len: 16, w: 5 }) + lightOver(strip);
+      } else if (style === 'afro') top += hairFront;
+      else if (style === 'long' || style === 'flow' || style === 'locs') {
+        const d = massD(style === 'flow' ? 0.09 : 0.07, 0.08, null, hh * 0.4);
+        if (style === 'locs') {
+          top += P(d, { fill: hcD }) + G({ 'clip-path': X.clip(d) }, Array.from({ length: 9 }, (_, i) => { const t = (i + 0.5) / 9, x0 = cx + (t - 0.5) * hw * 1.7; return chain([x0, hairline], [x0 + (t - 0.5) * hw * 0.6, cy - hh * 0.9], [x0 + (t - 0.5) * hw * 1.4, cy - hh * 1.05], 10, 9, false); }).join('') + lightOver(d));
+        } else {
+          const partFlow = style === 'flow' ? toCrown : (p => [p[0] - cx, Math.abs(p[0] - cx) * 0.3 + hh * 0.25]);
+          top += P(d, { fill: mix(hcD, hc, 0.4) }) + locks(d, 380, partFlow, { len: style === 'flow' ? 32 : 28, w: 4.6, k0: -0.5, k1: 0.12 }) + lightOver(d) + sheen(d, -0.1, 1.2, 1.55, 8, 0.24) + softLine();
+          for (const sd of [-1, 1]) {
+            const dd = cr([[cx + sd * hw * 0.82, cy - hh * 0.55], [cx + sd * hw * 1.08, cy - hh * 0.1], [cx + sd * hw * (style === 'flow' ? 1.06 : 1.1), cy + hh * (style === 'flow' ? 0.45 : 0.9)], [cx + sd * hw * (style === 'flow' ? 0.96 : 0.92), cy + hh * (style === 'flow' ? 0.5 : 0.95)], [cx + sd * hw * 0.93, cy - hh * 0.1]], true, 0.8);
+            top += P(dd, { fill: mix(hcD, hc, 0.4) }) + locks(dd, 90, () => [0, 1], { box: [cx + sd * hw * 0.85 - hw * 0.15, cy - hh * 0.6, cx + sd * hw * 0.85 + hw * 0.3, cy + hh * 0.95], len: 30, w: 6 }) + lightOver(dd);
+          }
+        }
+      }
+    }
+    out.top = top;
+    out.features = eyes + brows + nose;
+    out.mouth = mouth;
+    out.beard = beard;
+    out.mustache = mustache;
+    out.hasBeardMass = false;
+    out.lipHoleD = lipHole;
+    out.loD = loD; out.upD = upD;
+    return out;
+  }
+
+  function neckPath(cx, cy, hw, hh, nW, bottom) {
+    return cr([[cx - nW, cy + hh * 0.2], [cx - nW * 1.0, cy + hh * 0.9], [cx - nW * 1.12, bottom - hh * 0.25], [cx - nW * 1.6, bottom], [cx + nW * 1.6, bottom], [cx + nW * 1.12, bottom - hh * 0.25], [cx + nW * 1.0, cy + hh * 0.9], [cx + nW, cy + hh * 0.2]], true, 0.7);
+  }
+  function neckLayer(X, H, Hd, nW, bottom) {
+    const { cx, cy, hw, hh } = H;
+    const d = neckPath(cx, cy, hw, hh, nW, bottom), cl = X.clip(d);
+    return P(d, { fill: X.lin([[0, mix(H.skin, Hd.skL, 0.2)], [0.55, H.skin], [1, Hd.skD]], 0, 0, 1, 0) }) +
+      G({ 'clip-path': cl },
+        ell(cx + hw * 0.05, cy + hh * 0.98, hw * 0.85, hh * 0.24, { fill: Hd.skDD, opacity: 0.6, filter: X.blur(7) }) +
+        ell(cx + nW * 0.9, cy + hh * 1.3, nW * 0.4, hh * 0.6, { fill: Hd.skD, opacity: 0.45, filter: X.blur(6) }) +
+        P(`M${pt([cx - nW * 0.8, cy + hh * 0.75])}Q${pt([cx - nW * 0.45, cy + hh * 1.3])} ${pt([cx - nW * 0.15, bottom])}`, { stroke: Hd.skL, 'stroke-width': 3, fill: 'none', opacity: 0.25, filter: X.blur(2) }) +
+        P(`M${pt([cx + nW * 0.8, cy + hh * 0.75])}Q${pt([cx + nW * 0.45, cy + hh * 1.3])} ${pt([cx + nW * 0.15, bottom])}`, { stroke: Hd.skDD, 'stroke-width': 3, fill: 'none', opacity: 0.25, filter: X.blur(2) }) +
+        ell(cx - hw * 0.03, cy + hh * 1.22, hw * 0.07, hh * 0.08, { fill: Hd.skL, opacity: 0.25, filter: X.blur(2) }) +
+        E('rect', { x: f(cx - nW * 2), y: f(cy), width: f(nW * 4), height: f(bottom - cy), fill: '#000', filter: X.grain(H.seed + 1, 0.3) }));
+  }
+
+  function background(X, W, Hh, c1, c2, num) {
+    const base = lum(c1) < 0.02 ? mix(c1, c2, 0.25) : c1;
+    let s = E('rect', { width: W, height: Hh, fill: X.rad([[0, mix(base, '#ffffff', 0.22)], [0.55, base], [1, mix(base, '#05080c', 0.62)]], 0.42, 0.3, 0.85) });
+    // fine diagonal pinstripes
+    let st = '';
+    for (let i = -Hh; i < W; i += 14) st += P(`M${i} ${Hh}L${i + Hh} 0`, { stroke: '#fff', 'stroke-width': 1, opacity: 0.045 });
+    s += st;
+    if (num) s += numerals(num, W * 0.76, Hh * 0.08, Hh * 0.5, '#ffffff', null, 0, 0.07);
+    s += ell(W * 0.5, Hh * 0.45, W * 0.36, Hh * 0.36, { fill: '#fff', opacity: 0.12, filter: X.blur(30) });
+    s += E('rect', { x: 0, y: f(Hh * 0.82), width: W, height: f(Hh * 0.18), fill: X.lin([[0, '#000', 0], [1, '#000', 0.35]]) });
+    return s;
+  }
+
+  // ===== PLAYER =====
+  // o: { seed, L (lookOf), age, morale, temper, num, c1, c2, iris? }
+  function player(o) {
+    const L = o.L, W = 400, id = 'p' + (o.seed >>> 0).toString(36);
+    const X = Ctx(id), r = rng(o.seed + 11);
+    const c1 = o.c1 || '#3a4654', c2 = o.c2 || '#8a96a3';
+    const bw = clamp(L.bw, 0.82, 1.48);
+    const hw = 60 * (0.94 + (L.jaw - 1) * 0.18 + (bw - 1) * 0.08), hh = 80 * L.faceLen;
+    const cx = 200, cy = 162;
+    const mood = o.morale >= 65 ? 1 : o.morale < 40 ? -1 : 0;
+    const iris = o.iris || (L.skinI >= 3 || r() < 0.78 ? ['#3b2314', '#2c1a10', '#4a2e1a'][Math.floor(r() * 3)] : ['#4f7da3', '#5d7a4a', '#6b5a2e', '#6d8596'][Math.floor(r() * 4)]);
+    const H = { cx, cy, hw, hh, skin: L.skin, skinI: L.skinI, hairC: L.hairC, grey: L.grey, hair: L.hair, beard: L.beard, jaw: L.jaw, nose: L.nose, eyeGap: L.eyeGap, brow: L.brow, ears: L.ears, age: o.age, mood, angry: o.temper >= 72, eyeBlack: L.eyeBlack, seed: o.seed, iris, rim: mix(c2, '#ffffff', 0.55), teeth: r() < 0.55, fat: clamp((bw - 1.15) * 1.2, 0, 0.4) };
+    const Hd = head(X, H);
+    const body = [];
+    // shoulders in pads under the jersey
+    const sw = hw * (2.9 + (bw - 1) * 1.5), padTop = cy + hh * 1.36, neckB = cy + hh * 1.3;
+    const nW = hw * (0.74 + (bw - 1) * 0.5);
+    const jD = cr([[cx - W, W + 20], [cx - sw * 1.08, W + 5], [cx - sw * 1.02, padTop + hh * 0.75], [cx - sw * 0.78, padTop + hh * 0.08], [cx - sw * 0.42, padTop - hh * 0.06], [cx - nW * 1.2, neckB], [cx, neckB + hh * 0.08], [cx + nW * 1.2, neckB], [cx + sw * 0.42, padTop - hh * 0.06], [cx + sw * 0.78, padTop + hh * 0.08], [cx + sw * 1.02, padTop + hh * 0.75], [cx + sw * 1.08, W + 5], [cx + W, W + 20]], true, 0.75);
+    const jc = c1, jcL = mix(jc, '#ffffff', 0.18), jcD = mix(jc, '#000000', 0.45), tc = c2;
+    const vD = `M${pt([cx - nW * 1.15, neckB - 2])}L${pt([cx, neckB + hh * 0.68])}L${pt([cx + nW * 1.15, neckB - 2])}`;
+    body.push(neckLayer(X, H, Hd, nW, neckB + hh * 0.5));
+    // dark undershirt / pad inside the V
+    body.push(P(`${vD}Z`, { fill: '#16191e' }));
+    const jcl = X.clip(jD);
+    body.push(P(jD, { fill: X.lin([[0, jcL], [0.5, jc], [1, jcD]], 0, 0, 1, 0.3) }));
+    body.push(G({ 'clip-path': jcl },
+      // pad ridges and cloth folds
+      ell(cx - sw * 0.6, padTop + hh * 0.05, sw * 0.38, hh * 0.18, { fill: '#fff', opacity: 0.16, filter: X.blur(8) }) +
+      ell(cx + sw * 0.62, padTop + hh * 0.1, sw * 0.38, hh * 0.2, { fill: '#fff', opacity: 0.06, filter: X.blur(8) }) +
+      P(`M${pt([cx - sw * 0.88, padTop + hh * 0.6])}Q${pt([cx - sw * 0.5, padTop + hh * 0.75])} ${pt([cx - sw * 0.3, W])}`, { stroke: jcD, 'stroke-width': 10, fill: 'none', opacity: 0.35, filter: X.blur(6) }) +
+      P(`M${pt([cx + sw * 0.88, padTop + hh * 0.6])}Q${pt([cx + sw * 0.5, padTop + hh * 0.75])} ${pt([cx + sw * 0.3, W])}`, { stroke: jcD, 'stroke-width': 14, fill: 'none', opacity: 0.5, filter: X.blur(7) }) +
+      // shoulder stripes
+      [-1, 1].map(s => P(`M${pt([cx + s * sw * 0.86, padTop + hh * 0.02])}Q${pt([cx + s * sw * 1.0, padTop + hh * 0.5])} ${pt([cx + s * sw * 1.02, W])}`, { stroke: tc, 'stroke-width': 12, fill: 'none' }) + P(`M${pt([cx + s * sw * 0.86, padTop + hh * 0.02])}Q${pt([cx + s * sw * 1.0, padTop + hh * 0.5])} ${pt([cx + s * sw * 1.02, W])}`, { stroke: ink(tc) === '#ffffff' ? '#ffffff' : '#10151b', 'stroke-width': 3, fill: 'none', opacity: 0.85 })).join('') +
+      E('rect', { x: 0, y: f(padTop - 30), width: W, height: 300, fill: '#000', filter: X.grain(o.seed + 2, 0.35) }) +
+      E('rect', { x: 0, y: f(padTop - 30), width: W, height: 300, fill: X.dots(lum(jc) > 0.5 ? '#000' : '#000', 3.2, 0.75, 0.22) }) +
+      // shoulder pads under the jersey: a ridge along the top and the front edge of each cap
+      [-1, 1].map(s => P(`M${pt([cx + s * nW * 1.3, neckB + 2])}Q${pt([cx + s * sw * 0.55, padTop - hh * 0.12])} ${pt([cx + s * sw * 0.92, padTop + hh * 0.22])}`, { stroke: '#fff', 'stroke-width': 6, fill: 'none', opacity: s < 0 ? 0.2 : 0.08, filter: X.blur(3) }) +
+        P(`M${pt([cx + s * sw * 0.5, padTop])}Q${pt([cx + s * sw * 0.46, padTop + hh * 0.5])} ${pt([cx + s * sw * 0.56, padTop + hh * 0.95])}`, { stroke: jcD, 'stroke-width': 7, fill: 'none', opacity: 0.4, filter: X.blur(4) }) +
+        P(`M${pt([cx + s * sw * 0.78, padTop + hh * 0.06])}Q${pt([cx + s * sw * 0.72, padTop + hh * 0.5])} ${pt([cx + s * sw * 0.76, W])}`, { stroke: jcD, 'stroke-width': 1.3, fill: 'none', opacity: 0.6 })).join('') +
+      (o.num != null && o.num !== '' ? numerals(o.num, cx, neckB + hh * 0.84, hh * 0.92, lum(jc) > 0.5 ? tc : '#ffffff', tc === '#ffffff' || lum(jc) > 0.5 ? jcD : tc, 3.5) +
+        P(`M${pt([cx - sw * 0.5, neckB + hh * 1.3])}Q${pt([cx, neckB + hh * 1.15])} ${pt([cx + sw * 0.5, neckB + hh * 1.45])}`, { stroke: '#000', 'stroke-width': 9, fill: 'none', opacity: 0.14, filter: X.blur(5) }) : '') +
+      P(jD, { fill: 'none', stroke: H.rim, 'stroke-width': 5, opacity: 0.35, filter: X.blur(3) })));
+    // collar trim
+    body.push(P(vD, { stroke: tc, 'stroke-width': 10, fill: 'none', 'stroke-linejoin': 'round' }) + P(vD, { stroke: ink(tc) === '#ffffff' ? '#ffffff' : jcD, 'stroke-width': 2.5, fill: 'none', 'stroke-linejoin': 'round', opacity: 0.8, transform: 'translate(0 3)' }) + P(vD, { stroke: '#000', 'stroke-width': 6, fill: 'none', opacity: 0.25, filter: X.blur(3), transform: 'translate(0 6)' }));
+
+    const layers = [
+      background(X, W, W, c1, c2, o.num),
+      Hd.back,
+      body.join(''),
+      // head shadow on the jersey/neck
+      Hd.ears,
+      Hd.face,
+      Hd.features,
+      Hd.beard,
+      Hd.hasBeardMass ? P(Hd.loD, { fill: mix(shade(L.skin, 0.78), '#b0504a', 0.35), opacity: 0.0 }) : '',
+      Hd.mouth,
+      Hd.mustache,
+      Hd.top,
+      E('rect', { width: W, height: W, fill: X.rad([[0, '#000', 0], [0.7, '#000', 0], [1, '#000', 0.4]], 0.5, 0.45, 0.75) })
+    ];
+    return svg(X, W, W, layers.join(''), o.label || 'Player portrait');
+  }
+
+
+  // ===== HEAD COACH =====
+  const C_SKINS = ['#f2cba8', '#e2ae87', '#c88a62', '#a26a4a', '#7b4b33', '#4e3022'], C_SKI = [0, 1, 3, 3, 5, 7];
+  const C_HAIRC = ['#1c1916', '#4b3223', '#8a5a32', '#caa065', '#8f8f8f', '#e6e2da'];
+  const C_PANTS = { khaki: '#b39b72', black: '#25292e', navy: '#1f2b46', gray: '#6c7177', olive: '#5b5f3e' };
+  const C_TOPC = { white: '#e9e9e4', black: '#202327', gray: '#8d9196', navy: '#1f2b46' };
+  const C_HAIR = { bald: 'bald', buzz: 'buzz', crew: 'crew', part: 'part', slick: 'slick', curly: 'curly', flow: 'flow', thin: 'thin' };
+  // c: the game's coach object; t: { c1, c2 }; opt: { crop: true } returns a head-and-shoulders thumbnail
+  function coach(c, t, opt = {}) {
+    const W = 400, Hh = 500, seed = (c.seed != null ? c.seed : (hash(c.name || 'coach') ^ ((c.skin | 0) * 131 + (c.age | 0)))) >>> 0, id = 'c' + seed.toString(36);
+    const X = Ctx(id), r = rng(seed);
+    const c1 = t.c1, c2 = t.c2;
+    const age = c.age || 47, wt = c.wt || 215, fat = clamp((wt - 195) / 135, 0, 1);
+    const skin = C_SKINS[c.skin | 0] || C_SKINS[2], skinI = C_SKI[c.skin | 0];
+    const hcI = c.hairC | 0, natGrey = hcI >= 4;
+    const grey = natGrey ? 0 : clamp((age - 40) / 28, 0, 0.85);
+    const cx = 200, cy = 148, hw = 64 * (1 + fat * 0.1), hh = 86 * (1 + fat * 0.04);
+    const H = { cx, cy, hw, hh, skin, skinI, hairC: C_HAIRC[hcI], grey, hair: C_HAIR[c.hair] || 'crew', beard: c.face || 'none', jaw: 1 + fat * 0.35 + r() * 0.12, nose: 0.9 + r() * 0.35, eyeGap: 0.95 + r() * 0.1, brow: 0.85 + r() * 0.3, ears: 0.95 + r() * 0.15, age, mood: 1, angry: false, eyeBlack: false, seed, iris: skinI >= 3 || r() < 0.6 ? '#3b2314' : ['#4f7da3', '#5d7a4a', '#6b5a2e'][Math.floor(r() * 3)], rim: mix(c2, '#ffffff', 0.55), teeth: false, fat: fat * 0.5, recede: c.hair === 'thin' ? 1 : age > 55 && c.hair !== 'curly' ? 0.3 : 0 };
+    const Hd = head(X, H);
+    const T = c.top || 'polo';
+    const topC = c.topC === 'c1' ? c1 : c.topC === 'c2' ? c2 : (C_TOPC[c.topC] || c1);
+    const accent = topC === c1 ? c2 : topC === c2 ? c1 : (lum(c1) < 0.05 && lum(topC) < 0.05 ? c2 : c1);
+    const gC = topC, gL = mix(gC, '#ffffff', lum(gC) > 0.6 ? 0.4 : 0.16), gD = mix(gC, '#000000', lum(gC) > 0.6 ? 0.28 : 0.45);
+    const puffy = T === 'vest' || T === 'parka', jacket = T === 'blazer' || T === 'suit';
+    const S = hw * (2.15 + fat * 0.7 + (puffy ? 0.1 : 0)), neckY = cy + hh * 1.2, nW = hw * (0.58 + fat * 0.25);
+    const shirtUnder = jacket ? '#f1f1ec' : T === 'dress' ? (c.topC === 'white' || !c.topC ? '#eef0f2' : topC) : null;
+    const L = [];
+    L.push(background(X, W, Hh, c1, c2, null));
+    // hood behind the neck
+    if (T === 'hoodie' || T === 'parka') {
+      const ht = T === 'parka' ? 0.7 : 0.42, d = cr([[cx - S * 0.6, neckY + 26], [cx - S * 0.52, neckY - hh * ht * 0.45], [cx - hw * 0.95, neckY - hh * ht], [cx + hw * 0.95, neckY - hh * ht], [cx + S * 0.52, neckY - hh * ht * 0.45], [cx + S * 0.6, neckY + 26]], true, 0.8);
+      L.push(P(d, { fill: X.lin([[0, gL], [1, gD]], 0, 0, 1, 0.4) }) + P(d, { fill: '#000', opacity: 0.25, filter: X.blur(6), 'clip-path': X.clip(d) }));
+      if (T === 'parka') L.push(P(cr([[cx - S * 0.5, neckY - hh * 0.2], [cx - hw * 0.95, neckY - hh * 0.64], [cx + hw * 0.95, neckY - hh * 0.64], [cx + S * 0.5, neckY - hh * 0.2]], false), { stroke: '#d9d2c4', 'stroke-width': 10, fill: 'none', 'stroke-linecap': 'round', 'stroke-dasharray': '1.5 3', opacity: 0.85 }));
+    }
+    L.push(Hd.back);
+    L.push(neckLayer(X, H, Hd, nW, neckY + 40));
+    // torso and upper arms, one garment silhouette
+    const sleeveShort = T === 'polo' || T === 'tee';
+    const hemY = neckY + hh * 1.1;
+    const side = s => sleeveShort
+      ? [[cx + s * S * 0.42, neckY + hh * 0.1], [cx + s * S * 0.74, neckY + hh * 0.24], [cx + s * S * 0.93, neckY + hh * 0.42], [cx + s * S * 1.04, neckY + hh * 0.72], [cx + s * S * 1.1, hemY], [cx + s * S * 0.98, hemY + 5], [cx + s * S * 0.8, hemY + 3], [cx + s * S * 0.75, hemY + 40], [cx + s * S * 0.76, 440], [cx + s * S * 0.84, 530]]
+      : [[cx + s * S * 0.42, neckY + hh * 0.1], [cx + s * S * 0.74, neckY + hh * 0.24], [cx + s * S * 0.93, neckY + hh * 0.42], [cx + s * S * 1.04, neckY + hh * 0.72], [cx + s * S * 1.09, neckY + hh * 1.15], [cx + s * S * 1.11, 430], [cx + s * S * 1.05, 468], [cx + s * S * 0.9, 530]];
+    const torso = cr([[cx - nW * 1.02, neckY - 8], ...side(-1), ...side(1).reverse(), [cx + nW * 1.02, neckY - 8], [cx, neckY + 8]], true, sleeveShort ? 0.55 : 0.75);
+    const tcl = X.clip(torso);
+    const under = T === 'vest' ? '#2c3036' : null;
+    let tor = P(torso, { fill: X.lin([[0, gL], [0.5, gC], [1, gD]], 0, 0, 1, 0.25) });
+    let tex = '';
+    // arm separation, folds, light
+    for (const s of [-1, 1]) {
+      tex += P(`M${pt([cx + s * S * 0.74, neckY + 70])}Q${pt([cx + s * S * 0.7, 360])} ${pt([cx + s * S * 0.74, 440])}`, { stroke: gD, 'stroke-width': 9, fill: 'none', opacity: s > 0 ? 0.55 : 0.4, filter: X.blur(5) });
+      tex += P(`M${pt([cx + s * S * 0.78, neckY + 70])}Q${pt([cx + s * S * 0.82, 360])} ${pt([cx + s * S * 0.8, 440])}`, { stroke: gL, 'stroke-width': 4, fill: 'none', opacity: s < 0 ? 0.3 : 0.12, filter: X.blur(3) });
+      if (sleeveShort) tex += P(`M${pt([cx + s * S * 1.1, hemY - 1])}L${pt([cx + s * S * 0.8, hemY + 1])}`, { stroke: gD, 'stroke-width': 3, opacity: 0.8 }) + P(`M${pt([cx + s * S * 1.09, hemY - 8])}L${pt([cx + s * S * 0.8, hemY - 6])}`, { stroke: gD, 'stroke-width': 1, opacity: 0.5, 'stroke-dasharray': '2 2' });
+    }
+    tex += ell(cx - S * 0.62, neckY + 26, S * 0.35, 22, { fill: '#fff', opacity: lum(gC) > 0.6 ? 0.25 : 0.14, filter: X.blur(10) });
+    tex += ell(cx, neckY + 18, hw * 1.1, 26, { fill: '#000', opacity: 0.35, filter: X.blur(10) });
+    tex += P(`M${pt([cx - S * 0.45, 330])}Q${pt([cx - S * 0.1, 345])} ${pt([cx - S * 0.05, 370])}`, { stroke: gD, 'stroke-width': 6, fill: 'none', opacity: 0.25, filter: X.blur(4) });
+    tex += P(`M${pt([cx + S * 0.45, 330])}Q${pt([cx + S * 0.1, 345])} ${pt([cx + S * 0.05, 370])}`, { stroke: gD, 'stroke-width': 6, fill: 'none', opacity: 0.3, filter: X.blur(4) });
+    if (puffy) for (let y = neckY + 40; y < 520; y += 34) tex += P(`M${pt([cx - S * 1.2, y])}Q${pt([cx, y + 12])} ${pt([cx + S * 1.2, y])}`, { stroke: gD, 'stroke-width': 3, fill: 'none', opacity: 0.55 }) + P(`M${pt([cx - S * 1.2, y + 5])}Q${pt([cx, y + 17])} ${pt([cx + S * 1.2, y + 5])}`, { stroke: gL, 'stroke-width': 6, fill: 'none', opacity: 0.18, filter: X.blur(3) });
+    if (T === 'vest') for (const s of [-1, 1]) tex += P(cr([[cx + s * S * 0.7, neckY + 18], [cx + s * S * 1.15, neckY + 40], [cx + s * S * 1.2, 520], [cx + s * S * 0.76, 520], [cx + s * S * 0.72, 380]], true, 0.7), { fill: X.lin([[0, mix(under, '#fff', 0.1)], [1, shade(under, 0.7)]], 0, 0, 1, 0) });
+    if (T === 'wind') for (const s of [-1, 1]) tex += P(`M${pt([cx + s * nW * 1.1, neckY])}Q${pt([cx + s * S * 0.6, neckY + 40])} ${pt([cx + s * S * 1.2, neckY + 52])}L${pt([cx + s * S * 1.2, neckY + 92])}Q${pt([cx + s * S * 0.6, neckY + 80])} ${pt([cx + s * nW * 0.4, neckY + 64])}Z`, { fill: accent, opacity: 0.95 }) + P(`M${pt([cx + s * S * 0.2, 300])}l${s * S * 0.5} 120`, { stroke: '#fff', 'stroke-width': 8, opacity: 0.08, filter: X.blur(4) });
+    if (jacket) for (const s of [-1, 1]) tex += P(`M${pt([cx + s * 4, 470])}L${pt([cx + s * 4, 530])}`, { stroke: gD, 'stroke-width': 2, opacity: 0.7 });
+    // set-in sleeve seams
+    if (!puffy && T !== 'wind') for (const s of [-1, 1]) { const sd = `M${pt([cx + s * S * 0.8, neckY + hh * 0.26])}C${pt([cx + s * S * 0.74, neckY + hh * 0.55])} ${pt([cx + s * S * 0.74, neckY + hh * 0.9])} ${pt([cx + s * S * 0.77, sleeveShort ? hemY : neckY + hh * 1.3])}`; tex += P(sd, { stroke: gD, 'stroke-width': 1.3, fill: 'none', opacity: 0.6 }) + P(sd, { stroke: gL, 'stroke-width': 0.8, fill: 'none', opacity: 0.35, 'stroke-dasharray': '2 2', transform: `translate(${-s * 2} 0)` }); }
+    // compression folds where the arms fold across the chest
+    if (!puffy) for (const s of [-1, 1]) {
+      tex += P(`M${pt([cx + s * S * 0.72, neckY + hh * 1.0])}Q${pt([cx + s * S * 0.55, 360])} ${pt([cx + s * S * 0.3, 384])}`, { stroke: gD, 'stroke-width': 5, fill: 'none', opacity: s > 0 ? 0.34 : 0.24, filter: X.blur(3) });
+      tex += P(`M${pt([cx + s * S * 0.7, neckY + hh * 0.98])}Q${pt([cx + s * S * 0.52, 356])} ${pt([cx + s * S * 0.27, 378])}`, { stroke: gL, 'stroke-width': 2.5, fill: 'none', opacity: 0.14, filter: X.blur(2) });
+    }
+    if (!puffy) tex += P(`M${pt([cx - S * 0.55, 382])}Q${pt([cx - S * 0.1, 376])} ${pt([cx + S * 0.35, 370])}`, { stroke: gD, 'stroke-width': 6, fill: 'none', opacity: 0.22, filter: X.blur(3.5) });
+    // fabric weave: pique polo, fleece, fine suiting
+    if (T === 'polo') tex += E('rect', { x: 0, y: f(neckY - 20), width: W, height: 300, fill: X.dots(lum(gC) > 0.5 ? '#000' : '#fff', 2.6, 0.5, lum(gC) > 0.5 ? 0.08 : 0.1) });
+    if (T === 'hoodie' || T === 'crew') tex += E('rect', { x: 0, y: f(neckY - 20), width: W, height: 300, fill: '#000', filter: X.noise(gL, 0.7, 0.9, seed + 2), opacity: 0.18 });
+    if (jacket) tex += Array.from({ length: 40 }, (_, i) => P(`M${f(cx - S * 1.2 + i * S * 0.06)} ${f(neckY)}L${f(cx - S * 1.2 + i * S * 0.06 + 6)} 520`, { stroke: gL, 'stroke-width': 0.5, opacity: 0.08 })).join('');
+    // breast pocket: shirt pocket, or a welt with a pocket square on jackets
+    if (T === 'dress') tex += P(`M${pt([cx + S * 0.28, neckY + 58])}h${f(S * 0.26)}v${f(S * 0.24)}q${f(-S * 0.13)} 6 ${f(-S * 0.26)} 0Z`, { fill: 'none', stroke: gD, 'stroke-width': 1.2, opacity: 0.7 });
+    if (jacket && !c.sheet) tex += P(`M${pt([cx + S * 0.3, neckY + 66])}l${f(S * 0.26)} -3`, { stroke: gD, 'stroke-width': 2.5, opacity: 0.8 }) + P(`M${pt([cx + S * 0.34, neckY + 64])}l4 -10l6 7l5 -9l5 9l4 -2l1 6Z`, { fill: accent });
+    tex += E('rect', { x: 0, y: f(neckY - 20), width: W, height: 300, fill: '#000', filter: X.grain(seed + 7, puffy || T === 'wind' || lum(gC) > 0.5 ? 0.14 : 0.32) });
+    tex += P(torso, { fill: 'none', stroke: H.rim, 'stroke-width': 5, opacity: 0.3, filter: X.blur(3) });
+    // chest logo
+    if (!c.sheet && (T === 'polo' || T === 'qzip' || T === 'crew' || T === 'hoodie' || T === 'tee' || T === 'wind' || T === 'vest' || T === 'parka')) tex += crest(cx + S * 0.42, neckY + 64, 11, accent, ink(accent));
+    tor += G({ 'clip-path': tcl }, tex);
+    if (sleeveShort) for (const s of [-1, 1]) {
+      const d = cr([[cx + s * S * 0.78, hemY - 30], [cx + s * S * 1.07, hemY - 30], [cx + s * S * 1.11, 410], [cx + s * S * 1.06, 458], [cx + s * S * 0.84, 460], [cx + s * S * 0.76, 415]], true, 0.7);
+      L.push(P(d, { fill: X.lin([[0, s < 0 ? Hd.skL : skin], [0.55, skin], [1, Hd.skD]], 0, 0, 1, 0) }) + G({ 'clip-path': X.clip(d) }, ell(cx + s * S * 0.98, hemY + 30, S * 0.1, 40, { fill: s < 0 ? Hd.skL : Hd.skDD, opacity: s < 0 ? 0.35 : 0.3, filter: X.blur(6) }) + E('rect', { x: f(cx + s * S * 0.7 - (s < 0 ? S * 0.45 : 0)), y: f(hemY - 30), width: f(S * 0.45), height: 140, fill: '#000', filter: X.grain(seed + 4 + s, 0.3) })));
+    }
+    L.push(tor);
+    // neckline and collar
+    const collar = [];
+    const zipLine = (y0, y1) => P(`M${cx} ${y0}L${cx} ${y1}`, { stroke: shade(gC, 0.55), 'stroke-width': 3.5 }) + P(`M${cx} ${y0}L${cx} ${y1}`, { stroke: '#c9ccd0', 'stroke-width': 1.6, 'stroke-dasharray': '1.4 1.6', opacity: 0.8 }) + E('rect', { x: cx - 3, y: f(y0 + 6), width: 6, height: 15, rx: 2, fill: '#b9bcc0', stroke: '#55585c', 'stroke-width': 0.8 });
+    if (T === 'polo') {
+      collar.push(P(`M${pt([cx - nW * 0.6, neckY + 2])}L${pt([cx, neckY + 34])}L${pt([cx + nW * 0.6, neckY + 2])}Z`, { fill: Hd.skD }));
+      collar.push(E('rect', { x: cx - 9, y: f(neckY + 20), width: 18, height: 52, fill: gC, stroke: gD, 'stroke-width': 1 }) + [36, 56].map(y => circ(cx, neckY + y, 2.4, { fill: mix(gC, '#fff', 0.5), stroke: gD, 'stroke-width': 0.6 })).join(''));
+      for (const s of [-1, 1]) collar.push(P(`M${pt([cx + s * nW * 1.0, neckY - 14])}Q${pt([cx + s * nW * 1.55, neckY + 4])} ${pt([cx + s * nW * 1.65, neckY + 16])}L${pt([cx + s * 9, neckY + 40])}Q${pt([cx + s * nW * 0.5, neckY + 8])} ${pt([cx + s * nW * 0.72, neckY - 8])}Z`, { fill: X.lin([[0, gL], [1, gC]], 0, 0, 0, 1), stroke: gD, 'stroke-width': 1.2 }) + P(`M${pt([cx + s * nW * 1.6, neckY + 16])}L${pt([cx + s * 9, neckY + 40])}`, { stroke: '#000', 'stroke-width': 5, opacity: 0.25, filter: X.blur(3), transform: 'translate(0 4)' }));
+    } else if (T === 'tee' || T === 'crew' || T === 'hoodie') {
+      const th = T === 'tee' ? 6 : 10;
+      collar.push(P(`M${pt([cx - nW * 1.08, neckY - 6])}Q${pt([cx, neckY + 30])} ${pt([cx + nW * 1.08, neckY - 6])}`, { stroke: gD, 'stroke-width': th + 2, fill: 'none' }) + P(`M${pt([cx - nW * 1.08, neckY - 6])}Q${pt([cx, neckY + 30])} ${pt([cx + nW * 1.08, neckY - 6])}`, { stroke: gC, 'stroke-width': th, fill: 'none', 'stroke-dasharray': '1.2 1.6' }));
+      if (T === 'hoodie') for (const s of [-1, 1]) collar.push(P(`M${pt([cx + s * nW * 1.55, neckY - hh * 0.15])}Q${pt([cx + s * nW * 1.4, neckY + 14])} ${pt([cx + s * 8, neckY + 22])}`, { stroke: gD, 'stroke-width': 13, fill: 'none', 'stroke-linecap': 'round' }) + P(`M${pt([cx + s * nW * 1.55, neckY - hh * 0.15])}Q${pt([cx + s * nW * 1.4, neckY + 14])} ${pt([cx + s * 8, neckY + 22])}`, { stroke: s < 0 ? gL : gC, 'stroke-width': 10, fill: 'none', 'stroke-linecap': 'round' }));
+      if (T === 'hoodie') for (const s of [-1, 1]) collar.push(P(`M${pt([cx + s * 12, neckY + 16])}Q${pt([cx + s * 16, neckY + 60])} ${pt([cx + s * 13, neckY + 104])}`, { stroke: shade(gC, 0.85), 'stroke-width': 4, fill: 'none', 'stroke-linecap': 'round' }) + E('rect', { x: f(cx + s * 13 - 2.5), y: f(neckY + 102), width: 5, height: 11, rx: 1.5, fill: '#c5c8cc' }));
+    } else if (T === 'qzip' || T === 'wind' || T === 'vest' || T === 'parka') {
+      const tall = T === 'parka' ? hh * 0.62 : T === 'vest' ? hh * 0.42 : hh * 0.36, open = T === 'qzip' ? 14 : T === 'wind' ? 8 : 0;
+      const band = cr([[cx - nW * 1.15, neckY + 6], [cx - nW * 1.12, neckY - tall], [cx - open, neckY - tall + 6 + open * 0.6], [cx, neckY + open * 1.6], [cx + open, neckY - tall + 6 + open * 0.6], [cx + nW * 1.12, neckY - tall], [cx + nW * 1.15, neckY + 6], [cx, neckY + 26]], true, 0.5);
+      if (open) collar.push(P(`M${pt([cx - open, neckY - tall + 8])}L${pt([cx, neckY + open * 1.6])}L${pt([cx + open, neckY - tall + 8])}Z`, { fill: Hd.skD }));
+      collar.push(P(band, { fill: X.lin([[0, gL], [0.5, gC], [1, gD]], 0, 0, 1, 0) }) + P(band, { fill: 'none', stroke: gD, 'stroke-width': 1.5 }) + P(`M${pt([cx - nW * 1.12, neckY - tall + 4])}Q${pt([cx - nW * 0.5, neckY - tall + 8])} ${pt([cx - open, neckY - tall + 8])}`, { stroke: gL, 'stroke-width': 2, fill: 'none', opacity: 0.6 }));
+      collar.push(zipLine(neckY + open * 1.6, T === 'qzip' ? neckY + 86 : 540));
+    } else if (T === 'dress' || jacket) {
+      const sh = shirtUnder;
+      collar.push(P(`M${pt([cx - nW * 0.75, neckY - 2])}L${pt([cx, neckY + (jacket && T === 'blazer' ? 40 : 20)])}L${pt([cx + nW * 0.75, neckY - 2])}Z`, { fill: Hd.skD }));
+      if (jacket) {
+        const shirtV = `M${pt([cx - S * 0.36, neckY + 8])}L${pt([cx, 470])}L${pt([cx + S * 0.36, neckY + 8])}Z`;
+        collar.push(P(shirtV, { fill: X.lin([[0, '#ffffff'], [1, '#cfd2d6']], 0, 0, 1, 0) }));
+      }
+      for (const s of [-1, 1]) collar.push(P(`M${pt([cx + s * nW * 0.98, neckY - 14])}L${pt([cx + s * nW * 1.35, neckY + 18])}L${pt([cx + s * 6, neckY + (T === 'blazer' ? 44 : 26)])}Q${pt([cx + s * nW * 0.5, neckY + 6])} ${pt([cx + s * nW * 0.74, neckY - 8])}Z`, { fill: X.lin([[0, '#ffffff'], [1, mix(sh, '#9aa0a6', 0.2)]], 0, 0, 0, 1), stroke: mix(sh, '#000', 0.25), 'stroke-width': 1 }));
+      if (T !== 'blazer') {
+        const tie = T === 'suit' ? (topC === c1 ? c2 : c1) : accent;
+        collar.push(P(`M${pt([cx - 8, neckY + 20])}L${pt([cx + 8, neckY + 20])}L${pt([cx + 6, neckY + 34])}L${pt([cx - 6, neckY + 34])}Z`, { fill: shade(tie, 0.85) }) + P(`M${pt([cx - 6, neckY + 34])}L${pt([cx + 6, neckY + 34])}L${pt([cx + 16, 450])}L${pt([cx, 470])}L${pt([cx - 16, 450])}Z`, { fill: X.lin([[0, mix(tie, '#fff', 0.15)], [1, shade(tie, 0.7)]], 0, 0, 1, 0) }) + P(`M${pt([cx - 6, neckY + 60])}l14 14M${pt([cx - 10, neckY + 90])}l20 20`, { stroke: '#fff', 'stroke-width': 3, opacity: 0.12 }));
+      }
+      if (jacket) for (const s of [-1, 1]) collar.push(P(`M${pt([cx + s * S * 0.36, neckY + 8])}L${pt([cx + s * S * 0.3, neckY + 50])}L${pt([cx + s * S * 0.4, neckY + 62])}L${pt([cx + s * S * 0.06, 470])}L${pt([cx + s * S * 0.02, 470])}L${pt([cx + s * S * 0.18, neckY + 70])}L${pt([cx + s * nW * 1.4, neckY + 20])}Z`, { fill: X.lin([[0, gL], [1, gD]], 0, 0, 1, 1), stroke: gD, 'stroke-width': 1.2 }) + P(`M${pt([cx + s * S * 0.4, neckY + 62])}L${pt([cx + s * S * 0.06, 470])}`, { stroke: '#000', 'stroke-width': 6, opacity: 0.25, filter: X.blur(3), transform: `translate(${s * 4} 0)` }));
+    }
+    L.push(collar.join(''));
+    // whistle on a lanyard
+    if (c.whistle) {
+      const lan = c2 === '#000000' || lum(c2) < 0.03 ? '#2a2d31' : c2;
+      L.push(P(`M${pt([cx - nW * 1.05, neckY - 4])}Q${pt([cx - nW * 0.9, neckY + 60])} ${pt([cx - 2, neckY + 98])}M${pt([cx + nW * 1.05, neckY - 4])}Q${pt([cx + nW * 0.9, neckY + 60])} ${pt([cx + 2, neckY + 98])}`, { stroke: lan, 'stroke-width': 4, fill: 'none' }) +
+        G({ transform: `translate(${cx} ${neckY + 106}) rotate(-14)` }, P('M-7 -9h14a2 2 0 0 1 2 2v8a10 10 0 0 1 -10 10h-8a7 7 0 0 1 0 -14h2z', { fill: X.lin([[0, '#f2f3f4'], [0.5, '#a9adb2'], [1, '#5d6166']], 0, 0, 1, 1), stroke: '#3a3d41', 'stroke-width': 1 }) + circ(-6, 5, 2.4, { fill: '#2a2d31' })));
+    }
+    // play sheet behind the crossed forearm
+    const skinA = skin, skA = Hd.skD;
+    const sleeve = sleeveShort || T === 'dress' ? 'skin' : under ? under : gC;
+    const arms = [];
+    const fore = (x0, y0, x1, y1, w, col, cuffAt, sg) => {
+      const dx = x1 - x0, dy = y1 - y0, m = Math.hypot(dx, dy), ux = dx / m, uy = dy / m;
+      let nx = -dy / m, ny = dx / m; if (ny > 0) { nx = -nx; ny = -ny; }
+      const we = w * 0.56, ww = w * 0.4, at = (t, k) => [x0 + dx * t + nx * k, y0 + dy * t + ny * k];
+      // the forearm grows out of the upper arm: a bony point at the outer edge, a crease on the inside of the elbow
+      const d = cr([[cx + sg * S * 1.112, y0 - we * 0.8], [cx + sg * S * 0.95, y0 - we * 1.08], at(0.12, we * 1.02), at(0.4, we * 0.98), at(0.72, ww * 1.08), at(1, ww), [x1 + ux * ww * 0.5, y1 + uy * ww * 0.5], at(1, -ww), at(0.72, -ww * 1.04), at(0.4, -we * 0.96), at(0.12, -we * 1.0), [cx + sg * S * 0.93, y0 + we * 1.0], [cx + sg * S * 1.065, y0 + we * 0.74], [cx + sg * S * 1.118, y0 + we * 0.05]], true, 0.75);
+      const isSkin = col === 'skin', c0 = isSkin ? skinA : col, cl = X.clip(d);
+      const elbow = ell(cx + sg * S * 1.03, y0 + we * 0.5, S * 0.06, we * 0.28, { fill: isSkin ? Hd.skL : mix(c0, '#fff', 0.25), opacity: isSkin ? 0.4 : 0.3, filter: X.blur(2.5) }) +
+        ell(cx + sg * S * 0.99, y0 + we * 0.85, S * 0.08, we * 0.22, { fill: '#000', opacity: 0.22, filter: X.blur(3) }) +
+        P(`M${pt([cx + sg * S * 0.9, y0 - we * 1.04])}Q${pt([cx + sg * S * 0.84, y0 - we * 0.7])} ${pt([cx + sg * S * 0.86, y0 - we * 0.35])}`, { stroke: isSkin ? Hd.skDD : shade(c0, 0.5), 'stroke-width': 1.8, fill: 'none', opacity: 0.45, filter: X.blur(0.9) }) +
+        (isSkin ? '' : [0, 1].map(k => P(`M${pt([cx + sg * S * (1.1 - k * 0.03), y0 - we * (0.2 - k * 0.35)])}q${f(-sg * S * 0.06)} ${f(we * 0.1)} ${f(-sg * S * 0.1)} ${f(-we * 0.15)}`, { stroke: shade(c0, 0.5), 'stroke-width': 1.6, fill: 'none', opacity: 0.45, filter: X.blur(0.8) })).join(''));
+      let o = P(d, { fill: X.lin([[0, mix(c0, '#fff', 0.16)], [0.55, c0], [1, mix(c0, '#000', 0.4)]], 0, 0, 0, 1) });
+      o += G({ 'clip-path': cl }, elbow + P(`M${pt([x0, y0 - w * 0.25])}L${pt([x1, y1 - w * 0.25])}`, { stroke: '#fff', 'stroke-width': w * 0.2, opacity: 0.12, filter: X.blur(3) }) + (isSkin ? E('rect', { x: 0, y: f(Math.min(y0, y1) - w), width: W, height: f(Math.abs(y1 - y0) + w * 2), fill: '#000', filter: X.grain(seed + 3, 0.3) }) : '') +
+        (!isSkin ? [0.18, 0.3, 0.42].map(t => { const px = x0 + dx * t, py = y0 + dy * t; return P(`M${pt([px + nx * w * 0.3, py + ny * w * 0.3])}q${f(ux * 7 - nx * w * 0.15)} ${f(uy * 7 - ny * w * 0.15)} ${f(ux * 4 - nx * w * 0.42)} ${f(uy * 4 - ny * w * 0.42)}`, { stroke: shade(c0, 0.6), 'stroke-width': 1.6, fill: 'none', opacity: 0.3, filter: X.blur(1.2) }); }).join('') : '') +
+        (cuffAt != null ? (() => { const cxx = x0 + dx * cuffAt, cyy = y0 + dy * cuffAt, ox = dx / m, oy = dy / m, band = (k, col, sw, op) => P(`M${pt([cxx + nx * w + ox * k, cyy + ny * w + oy * k])}L${pt([cxx - nx * w + ox * k, cyy - ny * w + oy * k])}`, { stroke: col, 'stroke-width': sw, opacity: op });
+          if (T === 'dress') return band(0, shade(gC, 0.86), 17, 1) + band(-5, gL, 3, 0.8) + band(4, shade(gC, 0.7), 2, 0.7) + band(10, '#000', 5, 0.15);
+          return band(0, shade(c0, 0.75), 9, 1) + band(0, shade(c0, 0.6), 9, 0.4).replace('stroke-width="9"', 'stroke-width="9" stroke-dasharray="1.2 1.6"') + band(6, '#000', 2, 0.25) + (jacket ? band(8, '#f1f1ec', 5, 1) + band(10.5, '#b9bcc0', 1, 0.8) : ''); })() : ''));
+      return o;
+    };
+    const lw = hw * (0.78 + fat * 0.22);
+    // lower forearm (hand comes out over the far bicep)
+    arms.push(fore(cx + S * 0.98, 448, cx - S * 0.68, 402, lw * 0.95, sleeve === 'skin' ? 'skin' : sleeve, sleeve === 'skin' ? (T === 'dress' ? 0.2 : null) : 0.86, 1));
+    // hand on the left bicep
+    const hk = shade(skinA, 0.72), hx = cx - S * 0.7;
+    let hand = P(cr([[hx + 12, 386], [hx - 2, 376], [hx - S * 0.11, 377], [hx - S * 0.13, 412], [hx - 2, 416], [hx + 14, 410]], true, 0.8), { fill: X.lin([[0, Hd.skL], [0.6, skinA], [1, Hd.skD]], 0, 0, 0.6, 1) });
+    // fingers wrap around the outside of the bicep
+    for (let k = 0; k < 4; k++) {
+      const yy = 382 + k * 8.4, len = S * (0.2 - Math.abs(k - 1.2) * 0.022), x0 = hx - S * 0.09, kn = [x0 - len * 0.52, yy + 0.5], tip = [x0 - len, yy + 6.5 + k * 0.5];
+      const w0 = 8.4 - k * 0.5, dd = `M${pt([x0, yy])}Q${pt([kn[0] + 3, yy - 1.4])} ${pt(kn)}Q${pt([tip[0] + 3, kn[1] + 1.5])} ${pt(tip)}`;
+      hand += P(dd, { stroke: shade(skinA, 0.78), 'stroke-width': f(w0), 'stroke-linecap': 'round', fill: 'none' }) + P(dd, { stroke: skinA, 'stroke-width': f(w0 - 2), 'stroke-linecap': 'round', fill: 'none' }) +
+        P(`M${pt([x0, yy - 1.8])}Q${pt([kn[0] + 3, yy - 3.2])} ${pt([kn[0], kn[1] - 1.8])}`, { stroke: Hd.skL, 'stroke-width': 1.5, 'stroke-linecap': 'round', fill: 'none', opacity: 0.4 }) +
+        P(`M${pt([kn[0] + 1.5, kn[1] - 2.6])}q-1.5 2.6 0 5`, { stroke: Hd.skDD, 'stroke-width': 0.9, fill: 'none', opacity: 0.35 }) +
+        ell(tip[0] + 1.6, tip[1] - 0.8, 1.7, 1.4, { fill: mix(skinA, '#f2dbcf', 0.45), opacity: 0.65 });
+    }
+    hand += ell(hx - S * 0.05, 418, S * 0.12, 5, { fill: '#000', opacity: 0.25, filter: X.blur(3) });
+    arms.push(hand);
+    if (c.sheet) {
+      const sx = cx + S * 0.36, sy = 318, ccx = sx, ccy = sy + 41;
+      arms.push(E('rect', { x: f(sx - 34), y: f(sy - 4), width: 76, height: 102, rx: 5, fill: '#000', opacity: 0.32, filter: X.blur(5), transform: `rotate(9 ${f(ccx)} ${f(ccy)})` }) +
+        G({ transform: `rotate(189 ${f(ccx)} ${f(ccy)})` },
+          E('rect', { x: f(sx - 38), y: f(sy - 10), width: 76, height: 102, rx: 5, fill: '#e9e8e1', stroke: '#c4c3bb', 'stroke-width': 1 }) +
+          E('rect', { x: f(sx - 35), y: f(sy - 7), width: 70, height: 96, rx: 3.5, fill: X.lin([[0, '#f4f3ee'], [1, '#dddcd4']], 0, 0, 1, 1) }) +
+          E('rect', { x: f(sx - 38), y: f(sy - 10), width: 76, height: 12, rx: 5, fill: shade(accent, 0.9) }) +
+          circ(sx + 28, sy + 84, 3.2, { fill: '#9a9992' }) + circ(sx + 28, sy + 84, 1.6, { fill: '#5d5c57' }) +
+          E('rect', { x: f(sx - 38), y: f(sy - 10), width: 76, height: 102, rx: 5, fill: X.lin([[0, '#fff', 0.45], [0.3, '#fff', 0], [0.75, '#fff', 0], [1, '#fff', 0.15]], 0, 0, 1, 1) }) +
+          P(`M${pt([sx - 30, sy + 70])}L${pt([sx + 10, sy - 6])}`, { stroke: '#fff', 'stroke-width': 10, opacity: 0.16, filter: X.blur(3) })));
+    }
+    // top forearm (hand tucked under the right bicep)
+    arms.push(P(`M${pt([cx - S * 1.06, 470])}L${pt([cx + S * 0.9, 424])}`, { stroke: '#000', 'stroke-width': lw, opacity: 0.35, filter: X.blur(6), transform: 'translate(0 12)' }));
+    const raD = cr([[cx + S * 0.76, 330], [cx + S * 1.3, 330], [cx + S * 1.3, 500], [cx + S * 0.92, 474], [cx + S * 0.8, 452], [cx + S * 0.745, 425], [cx + S * 0.745, 395]], true, 0.6);
+    arms.push(G({ 'clip-path': X.clip(`M0 0H${W}V${Hh}H0Z` + raD, true) }, fore(cx - S * 0.98, 454, cx + S * 0.95, 405, lw, sleeve === 'skin' ? 'skin' : sleeve, sleeve === 'skin' ? (T === 'dress' ? 0.18 : null) : 0.97, -1)));
+    const raCol = sleeve === 'skin' ? (sleeveShort ? skinA : gC) : sleeve === under && under ? under : gC;
+    const edgeD = `M${pt([cx + S * 0.745, 385])}C${pt([cx + S * 0.742, 420])} ${pt([cx + S * 0.78, 450])} ${pt([cx + S * 0.92, 474])}`;
+    arms.push(G({ 'clip-path': X.clip(`M0 0H${W}V${Hh}H0Z` + raD, true) }, P(edgeD, { stroke: '#000', 'stroke-width': 10, opacity: 0.4, fill: 'none', filter: X.blur(4) })) +
+      G({ 'clip-path': X.clip(raD) }, P(edgeD, { stroke: mix(raCol, '#fff', 0.3), 'stroke-width': 4, opacity: 0.4, fill: 'none', filter: X.blur(1.8), transform: 'translate(3 0)' }) + P(edgeD, { stroke: shade(raCol, 0.6), 'stroke-width': 1.2, opacity: 0.6, fill: 'none' })));
+    // the tucked hand: thumb along the front of the bicep, fingertips curling round its outer edge
+    {
+      const tk = shade(skinA, 0.76), tD = mix(skinA, '#000', 0.18);
+      let th = '';
+      for (let k = 0; k < 3; k++) {
+        const yy = 402 + k * 8.4, x0 = cx + S * 1.07, x1 = cx + S * (1.115 + (k === 1 ? 0.008 : 0)), w0 = 7.4 - k * 0.4;
+        const dd = `M${pt([x0, yy])}Q${pt([x1 + 1, yy - 0.5])} ${pt([x1, yy + 4])}`;
+        th = P(dd, { stroke: tk, 'stroke-width': f(w0), 'stroke-linecap': 'round', fill: 'none' }) + P(dd, { stroke: tD, 'stroke-width': f(w0 - 2), 'stroke-linecap': 'round', fill: 'none' }) + P(`M${pt([x0 + 2, yy - 2])}Q${pt([x1 - 1, yy - 2.5])} ${pt([x1 + 1.2, yy + 1])}`, { stroke: Hd.skL, 'stroke-width': 1, fill: 'none', opacity: 0.3, 'stroke-linecap': 'round' }) + th;
+      }
+      // the thumb comes out from under the arm's edge and lies up the front of the bicep
+      const r0 = [cx + S * 0.76, 408], tip = [cx + S * 0.815, 377];
+      const thumbD = cr([[r0[0] - 7, r0[1] + 3], [r0[0] - 6.5, r0[1] - 11], [tip[0] - 5.5, tip[1] + 5], [tip[0] - 0.5, tip[1] - 1.5], [tip[0] + 5.5, tip[1] + 4], [r0[0] + 9, r0[1] - 9], [r0[0] + 9, r0[1] + 5]], true, 0.8);
+      th += P(thumbD, { fill: '#000', opacity: 0.25, filter: X.blur(3), transform: 'translate(3 3)' }) + P(thumbD, { fill: X.lin([[0, Hd.skL], [0.5, skinA], [1, tk]], 0, 0, 1, 0), stroke: tk, 'stroke-width': 1 }) +
+        P(`M${pt([r0[0] - 2, r0[1] - 14])}Q${pt([tip[0] - 4, tip[1] + 14])} ${pt([tip[0] - 1.5, tip[1] + 3])}`, { stroke: Hd.skL, 'stroke-width': 1.4, fill: 'none', opacity: 0.45 }) +
+        P(`M${pt([r0[0] + 2, r0[1] - 16])}q3 -1 5 1`, { stroke: Hd.skDD, 'stroke-width': 0.9, fill: 'none', opacity: 0.4 }) +
+        ell(tip[0], tip[1] + 3, 2.6, 3.2, { fill: mix(skinA, '#f2dbcf', 0.45), opacity: 0.7, transform: `rotate(-25 ${f(tip[0])} ${f(tip[1] + 3)})` });
+      arms.push(th);
+    }
+    L.push(arms.join(''));
+    // belt for tucked tops
+    if (T === 'polo' || T === 'dress') L.push(E('rect', { x: f(cx - S), y: 486, width: f(S * 2), height: 14, fill: '#2a1d14' }) + E('rect', { x: f(cx - 11), y: 486, width: 22, height: 14, rx: 2, fill: 'none', stroke: '#b9b39b', 'stroke-width': 2.5 }) + E('rect', { x: 0, y: 499, width: W, height: 4, fill: C_PANTS[c.pants] || C_PANTS.khaki }));
+    // head
+    const hatY = cy - hh * 0.4;
+    const hasHat = c.hat && c.hat !== 'none';
+    L.push(Hd.ears, Hd.face, Hd.features, Hd.beard, Hd.mouth, Hd.mustache);
+    if (hasHat && c.hat !== 'visor') {
+      const cutY = c.hat === 'beanie' ? cy - hh * 0.3 : hatY + 6;
+      L.push(G({ 'clip-path': X.clip(`M0 ${f(cutY)}H${W}V${Hh}H0Z`) }, Hd.top));
+    } else L.push(Hd.top);
+    // eyewear
+    const { ey, ex, ew, eh } = Hd;
+    if (c.eyes === 'glasses' || c.eyes === 'shades') {
+      const shades = c.eyes === 'shades';
+      let g = '';
+      for (const s of [-1, 1]) {
+        const x = cx + s * ex, w = ew * 2.6, h = eh * (shades ? 4.8 : 4.3);
+        const d = `M${pt([x - w / 2, ey - h * 0.42])}Q${pt([x, ey - h * 0.5])} ${pt([x + w / 2, ey - h * 0.42])}Q${pt([x + w / 2 + 1, ey + h * 0.4])} ${pt([x + s * w * 0.1, ey + h * 0.52])}Q${pt([x - w / 2, ey + h * 0.5])} ${pt([x - w / 2, ey - h * 0.42])}Z`;
+        g += P(d, { fill: shades ? X.lin([[0, '#3b4350'], [1, '#0d0f12']], 0, 0, 0, 1) : '#c8d8e6', opacity: shades ? 0.96 : 0.14 }) + P(d, { fill: 'none', stroke: shades ? '#15171a' : '#22252a', 'stroke-width': shades ? 3 : 2.6 });
+        g += P(`M${pt([x - w * 0.35, ey - h * 0.2])}L${pt([x - w * 0.05, ey - h * 0.4])}`, { stroke: '#fff', 'stroke-width': shades ? 3 : 2, opacity: shades ? 0.35 : 0.5, 'stroke-linecap': 'round' });
+        g += P(`M${pt([x + s * w / 2, ey - h * 0.3])}L${pt([cx + s * hw * 0.98, ey - h * 0.05])}`, { stroke: '#22252a', 'stroke-width': 2.4 });
+      }
+      g += P(`M${pt([cx - ex + ew * 1.3, ey - eh * 1.2])}Q${pt([cx, ey - eh * 2.2])} ${pt([cx + ex - ew * 1.3, ey - eh * 1.2])}`, { stroke: '#22252a', 'stroke-width': 2.4, fill: 'none' });
+      L.push(P(`M${pt([cx - ex, ey + eh * 3])}h${f(ex * 2)}`, { stroke: '#000', 'stroke-width': 4, opacity: 0.12, filter: X.blur(3) }) + g);
+    } else if (c.eyes === 'wrap') {
+      const d = cr([[cx - hw * 0.96, ey - eh * 1.6], [cx - ex, ey - eh * 2.9], [cx, ey - eh * 2.2], [cx + ex, ey - eh * 2.9], [cx + hw * 0.96, ey - eh * 1.6], [cx + hw * 0.9, ey + eh * 1.2], [cx + ex, ey + eh * 2.6], [cx + ew * 0.5, ey + eh * 1.6], [cx, ey - eh * 0.4], [cx - ew * 0.5, ey + eh * 1.6], [cx - ex, ey + eh * 2.6], [cx - hw * 0.9, ey + eh * 1.2]], true, 0.7);
+      L.push(P(d, { fill: X.lin([[0, '#1a2a52'], [0.45, '#6a3c8a'], [0.7, '#d0682a'], [1, '#202a3a']], 0, 0, 1, 1) }) + P(d, { fill: 'none', stroke: '#111317', 'stroke-width': 2.5 }) + P(`M${pt([cx - hw * 0.8, ey - eh * 1.6])}Q${pt([cx - ex, ey - eh * 2.4])} ${pt([cx - ew * 0.3, ey - eh * 1.6])}`, { stroke: '#fff', 'stroke-width': 2.5, fill: 'none', opacity: 0.5 }));
+    }
+    // headwear
+    const faceCl = X.clip(Hd.faceD);
+    if (c.headset && c.hat === 'bucket') L.push(headset());
+    if (hasHat) {
+      const hc1 = c.hat === 'bucket' ? (lum(c1) < 0.04 ? c2 : c1) : c1, hL = mix(hc1, '#fff', 0.2), hD = mix(hc1, '#000', 0.45), logo = c2;
+      const crown = (top, wid, base) => cr([[cx - wid, base + 4], [cx - wid * 1.0, base - hh * 0.25], [cx - wid * 0.82, top + hh * 0.2], [cx - wid * 0.42, top + 2], [cx, top], [cx + wid * 0.42, top + 2], [cx + wid * 0.82, top + hh * 0.2], [cx + wid * 1.0, base - hh * 0.25], [cx + wid, base + 4], [cx, base + 8]], true, 0.85);
+      let h = '';
+      if (c.hat === 'cap' || c.hat === 'back') {
+        const d = crown(cy - hh * 1.13, hw * 1.07, hatY);
+        h += P(d, { fill: X.lin([[0, hL], [0.5, hc1], [1, hD]], 0, 0, 1, 0.6) });
+        h += G({ 'clip-path': X.clip(d) }, P(`M${cx} ${f(cy - hh * 1.13)}L${cx} ${f(hatY + 8)}`, { stroke: hD, 'stroke-width': 1.5, opacity: 0.7 }) + [-1, 1].map(s => P(`M${cx} ${f(cy - hh * 1.13)}Q${pt([cx + s * hw * 0.75, cy - hh * 0.9])} ${pt([cx + s * hw * 0.82, hatY + 8])}`, { stroke: hD, 'stroke-width': 1.2, fill: 'none', opacity: 0.6 })).join('') + ell(cx - hw * 0.4, cy - hh * 0.95, hw * 0.4, hh * 0.18, { fill: '#fff', opacity: 0.18, filter: X.blur(8) }) + E('rect', { x: 0, y: 0, width: W, height: 260, fill: '#000', filter: X.grain(seed + 8, 0.35) }));
+        h += circ(cx, cy - hh * 1.13 + 2, 4, { fill: hD });
+        if (c.hat === 'cap') {
+          h += crest(cx, hatY - hh * 0.27, hh * 0.15, logo, ink(logo));
+          const brim = cr([[cx - hw * 1.08, hatY + 2], [cx - hw * 0.6, hatY - 2], [cx, hatY - 3], [cx + hw * 0.6, hatY - 2], [cx + hw * 1.08, hatY + 2], [cx + hw * 0.9, hatY + hh * 0.15], [cx, hatY + hh * 0.22], [cx - hw * 0.9, hatY + hh * 0.15]], true, 0.8);
+          L.push(G({ 'clip-path': faceCl }, ell(cx, hatY + hh * 0.1, hw * 0.95, hh * 0.09, { fill: '#000', opacity: 0.16, filter: X.blur(6) })));
+          h += P(brim, { fill: X.lin([[0, hD], [0.4, hc1], [1, shade(hc1, 0.6)]], 0, 0, 0, 1) }) + P(brim, { fill: 'none', stroke: shade(hc1, 0.5), 'stroke-width': 1.5 }) + P(`M${pt([cx - hw * 0.85, hatY + hh * 0.12])}Q${pt([cx, hatY + hh * 0.2])} ${pt([cx + hw * 0.85, hatY + hh * 0.12])}`, { stroke: '#fff', 'stroke-width': 1, opacity: 0.25, fill: 'none', 'stroke-dasharray': '2 2' });
+        } else {
+          const op = `M${pt([cx - hw * 0.26, hatY + 6])}Q${pt([cx - hw * 0.26, hatY - hh * 0.22])} ${pt([cx, hatY - hh * 0.24])}Q${pt([cx + hw * 0.26, hatY - hh * 0.22])} ${pt([cx + hw * 0.26, hatY + 6])}Z`;
+          h += P(op, { fill: H.hair === 'bald' ? skin : Hd.hc }) + P(op, { fill: '#000', opacity: 0.35, filter: X.blur(3), 'clip-path': X.clip(op) }) + E('rect', { x: f(cx - hw * 0.3), y: f(hatY - hh * 0.07), width: f(hw * 0.6), height: 6, rx: 2, fill: '#1c1e22' }) + circ(cx - hw * 0.18, hatY - hh * 0.07 + 3, 1.6, { fill: '#888' }) + circ(cx, hatY - hh * 0.07 + 3, 1.6, { fill: '#888' }) + circ(cx + hw * 0.18, hatY - hh * 0.07 + 3, 1.6, { fill: '#888' });
+          L.push(G({ 'clip-path': faceCl }, ell(cx, hatY + 6, hw * 1.0, 6, { fill: '#000', opacity: 0.14, filter: X.blur(4) })));
+        }
+      } else if (c.hat === 'visor') {
+        const band = `M${pt([cx - hw * 1.05, hatY + 6])}Q${pt([cx, hatY - 12])} ${pt([cx + hw * 1.05, hatY + 6])}L${pt([cx + hw * 1.04, hatY - 8])}Q${pt([cx, hatY - 28])} ${pt([cx - hw * 1.04, hatY - 8])}Z`;
+        const brim = cr([[cx - hw * 1.08, hatY + 4], [cx, hatY - 8], [cx + hw * 1.08, hatY + 4], [cx + hw * 0.9, hatY + hh * 0.17], [cx, hatY + hh * 0.24], [cx - hw * 0.9, hatY + hh * 0.17]], true, 0.8);
+        L.push(G({ 'clip-path': faceCl }, ell(cx, hatY + hh * 0.11, hw * 0.95, hh * 0.09, { fill: '#000', opacity: 0.15, filter: X.blur(6) })));
+        h += P(band, { fill: X.lin([[0, hL], [1, hD]], 0, 0, 1, 0) }) + crest(cx, hatY - 9, 7, logo, ink(logo)) + P(brim, { fill: X.lin([[0, hD], [0.4, hc1], [1, shade(hc1, 0.6)]], 0, 0, 0, 1) }) + P(brim, { fill: 'none', stroke: shade(hc1, 0.5), 'stroke-width': 1.5 });
+      } else if (c.hat === 'beanie') {
+        const top = cy - hh * 1.18, base = cy - hh * 0.3;
+        const d = cr([[cx - hw * 1.06, base + 6], [cx - hw * 1.08, cy - hh * 0.75], [cx - hw * 0.7, top + hh * 0.12], [cx, top], [cx + hw * 0.7, top + hh * 0.12], [cx + hw * 1.08, cy - hh * 0.75], [cx + hw * 1.06, base + 6], [cx, base + 10]], true, 0.85);
+        let rib = '';
+        for (let i = -9; i <= 9; i++) rib += P(`M${pt([cx + i * hw * 0.115, base + 10])}Q${pt([cx + i * hw * 0.11, cy - hh * 0.8])} ${pt([cx + i * hw * 0.05, top])}`, { stroke: hD, 'stroke-width': 1.4, fill: 'none', opacity: 0.45 });
+        const cuff = `M${pt([cx - hw * 1.08, base + 6])}Q${pt([cx, base + 16])} ${pt([cx + hw * 1.08, base + 6])}L${pt([cx + hw * 1.08, base - hh * 0.22])}Q${pt([cx, base - hh * 0.16])} ${pt([cx - hw * 1.08, base - hh * 0.22])}Z`;
+        h += P(d, { fill: X.lin([[0, hL], [0.5, hc1], [1, hD]], 0, 0, 1, 0.5) }) + G({ 'clip-path': X.clip(d) }, rib + ell(cx - hw * 0.4, cy - hh * 0.95, hw * 0.4, hh * 0.2, { fill: '#fff', opacity: 0.15, filter: X.blur(8) }));
+        h += P(cuff, { fill: X.lin([[0, hL], [1, hD]], 0, 0, 1, 0) }) + P(`M${pt([cx - hw * 1.08, base - hh * 0.1])}Q${pt([cx, base - hh * 0.04])} ${pt([cx + hw * 1.08, base - hh * 0.1])}`, { stroke: logo, 'stroke-width': 5, fill: 'none' }) + crest(cx, base - hh * 0.1, 8, logo, ink(logo));
+        L.push(G({ 'clip-path': faceCl }, ell(cx, base + 8, hw, 6, { fill: '#000', opacity: 0.12, filter: X.blur(4) })));
+      } else if (c.hat === 'bucket') {
+        const top = cy - hh * 1.1;
+        const d = cr([[cx - hw * 1.0, hatY], [cx - hw * 0.92, top + hh * 0.1], [cx, top], [cx + hw * 0.92, top + hh * 0.1], [cx + hw * 1.0, hatY], [cx, hatY + 6]], true, 0.8);
+        const brim = cr([[cx - hw * 1.0, hatY - 4], [cx, hatY], [cx + hw * 1.0, hatY - 4], [cx + hw * 1.42, hatY + hh * 0.2], [cx + hw * 0.6, hatY + hh * 0.3], [cx, hatY + hh * 0.32], [cx - hw * 0.6, hatY + hh * 0.3], [cx - hw * 1.42, hatY + hh * 0.2]], true, 0.8);
+        L.push(G({ 'clip-path': faceCl }, ell(cx, hatY + hh * 0.16, hw * 1.0, hh * 0.1, { fill: '#000', opacity: 0.17, filter: X.blur(6) })));
+        h += P(d, { fill: X.lin([[0, hL], [0.5, hc1], [1, hD]], 0, 0, 1, 0.4) }) + P(`M${pt([cx - hw, hatY - hh * 0.12])}Q${pt([cx, hatY - hh * 0.06])} ${pt([cx + hw, hatY - hh * 0.12])}`, { stroke: shade(hc1, 0.7), 'stroke-width': 6, fill: 'none' }) + P(brim, { fill: X.lin([[0, hc1], [1, shade(hc1, 0.6)]], 0, 0, 0, 1) }) + P(brim, { fill: 'none', stroke: hD, 'stroke-width': 1.2 }) + [0, 1, 2].map(i => P(`M${pt([cx - hw * (1.3 - i * 0.03), hatY + hh * (0.17 - i * 0.04)])}Q${pt([cx, hatY + hh * (0.3 - i * 0.04)])} ${pt([cx + hw * (1.3 - i * 0.03), hatY + hh * (0.17 - i * 0.04)])}`, { stroke: hD, 'stroke-width': 0.8, fill: 'none', opacity: 0.5 })).join('') + crest(cx, hatY - hh * 0.32, 9, logo, ink(logo));
+      }
+      L.push(h);
+    }
+    // headset: band hugs whatever is on top of the head, cup sits over the left ear, pad on the right ear
+    function headset() {
+      const HK = { bald: 0.005, buzz: 0.02, crew: 0.07, part: 0.1, slick: 0.08, curly: 0.15, flow: 0.095, thin: 0.03 };
+      const sky = cy - 0.12 * hh, sry = hh * 0.88;
+      let topY, rx;
+      if (hasHat && c.hat !== 'visor' && c.hat !== 'bucket') { topY = c.hat === 'beanie' ? cy - hh * 1.18 : cy - hh * 1.13; rx = hw * 1.1; }
+      else { const k = HK[H.hair] != null ? HK[H.hair] : 0.07; topY = sky - sry * (1 + k * 0.85); rx = hw * (1.04 + k * 0.6); }
+      topY -= 2.5;
+      const earY = (Hd.by + Hd.nb) / 2 + hh * 0.02, ancY = earY - hh * 0.2, ry = ancY - topY;
+      const band = `M${pt([cx - rx, ancY])}A${f(rx)} ${f(ry)} 0 0 1 ${pt([cx + rx, ancY])}`;
+      let o = P(band, { stroke: '#000', 'stroke-width': 9, fill: 'none', opacity: 0.25, filter: X.blur(2.5), transform: 'translate(1.5 3)' });
+      o += P(band, { stroke: '#16181b', 'stroke-width': 6.5, fill: 'none' }) + P(`M${pt([cx - rx * 0.92, ancY - ry * 0.4])}A${f(rx - 1.5)} ${f(ry - 1.5)} 0 0 1 ${pt([cx + rx * 0.2, topY + 1.5])}`, { stroke: '#7d838a', 'stroke-width': 1.4, fill: 'none', opacity: 0.55 });
+      // sliders down to the cups
+      for (const s of [-1, 1]) o += E('rect', { x: f(cx + s * rx - 3), y: f(ancY - 2), width: 6, height: f(hh * 0.1), rx: 2, fill: '#2a2d31', stroke: '#111', 'stroke-width': 0.6 });
+      const ecx = cx - hw * 1.03, ecy = earY;
+      // right side: a small pad pressed on the ear
+      o += ell(cx + rx - 1, ecy - hh * 0.02, hh * 0.07, hh * 0.11, { fill: X.rad([[0, '#34373c'], [1, '#141518']], 0.4, 0.4, 0.6) }) + ell(cx + rx - 1, ecy - hh * 0.02, hh * 0.07, hh * 0.11, { fill: 'none', stroke: '#45494f', 'stroke-width': 0.8 });
+      // mic boom from the cup to the corner of the mouth
+      const mx = cx - Hd.mw - 6, myy = Hd.my + 2;
+      o += P(`M${pt([ecx + hh * 0.04, ecy + hh * 0.1])}C${pt([ecx + hh * 0.05, myy + hh * 0.08])} ${pt([mx - hw * 0.25, myy + hh * 0.06])} ${pt([mx, myy])}`, { stroke: '#000', 'stroke-width': 4, fill: 'none', opacity: 0.2, filter: X.blur(1.5), transform: 'translate(1 2)' }) + P(`M${pt([ecx + hh * 0.04, ecy + hh * 0.1])}C${pt([ecx + hh * 0.05, myy + hh * 0.08])} ${pt([mx - hw * 0.25, myy + hh * 0.06])} ${pt([mx, myy])}`, { stroke: '#1b1d20', 'stroke-width': 2.4, fill: 'none', 'stroke-linecap': 'round' }) + ell(mx + 1, myy, 5.2, 4, { fill: X.rad([[0, '#3a3d42'], [1, '#0f1012']], 0.4, 0.35, 0.6) });
+      // left earcup over the ear
+      o += ell(ecx, ecy, hh * 0.135, hh * 0.175, { fill: X.rad([[0, '#3f434a'], [0.7, '#1d1f23'], [1, '#0d0e10']], 0.38, 0.33, 0.68) }) + ell(ecx, ecy, hh * 0.135, hh * 0.175, { fill: 'none', stroke: '#4b5057', 'stroke-width': 1.1 }) + ell(ecx - 1, ecy, hh * 0.075, hh * 0.1, { fill: 'none', stroke: lum(c2) < 0.03 ? '#5a5f66' : c2, 'stroke-width': 1.4, opacity: 0.75 }) + ell(ecx - 4, ecy - hh * 0.07, hh * 0.04, hh * 0.035, { fill: '#fff', opacity: 0.16, filter: X.blur(1.4) });
+      // cushion contact shadow on the face/hair
+      o = ell(ecx + hh * 0.11, ecy, hh * 0.05, hh * 0.15, { fill: '#000', opacity: 0.25, filter: X.blur(3) }) + o;
+      return o;
+    }
+    if (c.headset && c.hat !== 'bucket') L.push(headset());
+    L.push(E('rect', { width: W, height: Hh, fill: X.rad([[0, '#000', 0], [0.7, '#000', 0], [1, '#000', 0.42]], 0.5, 0.42, 0.78) }));
+    const vb = opt.crop ? `${cx - 125} ${cy - 135} 250 250` : null;
+    const out = svg(X, W, Hh, L.join(''), opt.label || 'Head coach portrait');
+    return vb ? out.replace(`viewBox="0 0 ${W} ${Hh}"`, `viewBox="${vb}"`) : out;
+  }
+  const my = Hd => Hd.my;
+  function hash(s) { let h = 2166136261; for (const ch of String(s)) { h ^= ch.charCodeAt(0); h = Math.imul(h, 16777619); } return h >>> 0; }
+  // generic team crest: a small shield with a chevron
+  function crest(x, y, s, col, inkC) {
+    return P(`M${pt([x - s, y - s * 0.9])}L${pt([x + s, y - s * 0.9])}L${pt([x + s, y + s * 0.1])}Q${pt([x + s * 0.9, y + s * 0.8])} ${pt([x, y + s * 1.15])}Q${pt([x - s * 0.9, y + s * 0.8])} ${pt([x - s, y + s * 0.1])}Z`, { fill: col, stroke: inkC, 'stroke-width': f(Math.max(0.8, s * 0.12)) }) + P(`M${pt([x - s * 0.55, y + s * 0.05])}L${pt([x, y - s * 0.45])}L${pt([x + s * 0.55, y + s * 0.05])}`, { stroke: inkC, 'stroke-width': f(s * 0.22), fill: 'none', 'stroke-linejoin': 'round' });
+  }
+
+  function svg(X, W, Hh, inner, label) {
+    return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${Hh}" role="img" aria-label="${label}"><defs>${X.defs.join('')}</defs>${inner}</svg>`;
+  }
+
+  return { player, coach, head, Ctx, numerals, background, neckLayer, mix, shade, lum, ink, rng, cr, E, P, G, ell, circ, pt, f, clamp };
+})();
+
 // ---------- Headshots ----------
+// HD painted-vector portraits, rendered once per look and reused as an image
+const _HSC = new Map();
 function headshotSVG(p, size) {
     const L = lookOf(p);
     if (!L)
         return '';
     const t = S.teams[p.team] || { c1: '#3a4654', c2: '#8a96a3' };
-    const id = 'hs' + p.id, jaw = L.jaw, fl = L.faceLen, sk = L.skin, skD = shadeHexF(sk, 0.82), hc = L.grey ? mix(L.hairC, '#bdbdbd', L.grey) : L.hairC;
-    const W = 120, cx = 60, hy = 52, hw = 21 * jaw, hh = 27 * fl, shp = Math.floor(lh((p.tid || p.id) | 0, 950) * 3), cheek = shp === 0 ? 0.95 : shp === 1 ? 0.78 : 0.62, chin = shp === 0 ? 0.8 : shp === 1 ? 0.92 : 0.86;
-    const mood = p.morale >= 65 ? 1 : p.morale < 40 ? -1 : 0, angry = (p.pers && p.pers.temper >= 72) ? 1 : 0;
-    const jc = t.c1, tc = t.c2, num = p.jn != null && p.jn !== '' ? esc(String(p.jn)) : '';
-    const sh = 44 * clamp(L.bw, 0.85, 1.35);
-    const parts = [];
-    parts.push(`<defs><linearGradient id="${id}g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="${mix(lum(jc) < 0.2 ? tc : jc, '#ffffff', 0.35)}"/><stop offset="1" stop-color="${mix(lum(jc) < 0.2 ? tc : jc, '#0c1117', 0.35)}"/></linearGradient><clipPath id="${id}c"><rect width="${W}" height="${W}" rx="14"/></clipPath></defs>`);
-    parts.push(`<g clip-path="url(#${id}c)"><rect width="${W}" height="${W}" fill="url(#${id}g)"/>`);
-    if (num)
-        parts.push(`<text x="${W - 8}" y="44" text-anchor="end" font-family="Big Shoulders Display, Impact, sans-serif" font-weight="800" font-size="46" fill="${inkOn(jc)}" opacity="0.12">${num}</text>`);
-    // hair behind the head
-    if (L.hair === 'afro')
-        parts.push(`<ellipse cx="${cx}" cy="${hy - 6}" rx="${hw + 13}" ry="${hh + 8}" fill="${hc}"/>`);
-    if (L.hair === 'locs' || L.hair === 'long' || L.hair === 'braids')
-        parts.push(`<path d="M${cx - hw - 6} ${hy - 6} Q${cx - hw - 12} ${hy + 30} ${cx - hw - 4} ${hy + 46} L${cx + hw + 4} ${hy + 46} Q${cx + hw + 12} ${hy + 30} ${cx + hw + 6} ${hy - 6} Z" fill="${hc}"/>`);
-    // shoulders and jersey
-    parts.push(`<path d="M${cx - sh} ${W} Q${cx - sh} ${hy + 40} ${cx - sh * 0.55} ${hy + 33} Q${cx} ${hy + 26} ${cx + sh * 0.55} ${hy + 33} Q${cx + sh} ${hy + 40} ${cx + sh} ${W} Z" fill="${jc}" stroke="rgba(0,0,0,0.25)"/>`);
-    parts.push(`<path d="M${cx - 13} ${hy + 28} L${cx} ${hy + 44} L${cx + 13} ${hy + 28}" fill="none" stroke="${tc}" stroke-width="5"/>`);
-    if (num)
-        parts.push(`<text x="${cx}" y="${W - 4}" text-anchor="middle" font-family="Big Shoulders Display, Impact, sans-serif" font-weight="800" font-size="22" fill="${inkOn(jc)}" opacity="0.92">${num}</text>`);
-    // neck
-    parts.push(`<path d="M${cx - 10} ${hy + 18} L${cx - 11} ${hy + 33} L${cx} ${hy + 40} L${cx + 11} ${hy + 33} L${cx + 10} ${hy + 18} Z" fill="${skD}"/>`);
-    // ears and head
-    parts.push(`<ellipse cx="${cx - hw}" cy="${hy + 2}" rx="${4.5 * L.ears}" ry="${6.5 * L.ears}" fill="${skD}"/><ellipse cx="${cx + hw}" cy="${hy + 2}" rx="${4.5 * L.ears}" ry="${6.5 * L.ears}" fill="${skD}"/>`);
-    parts.push(`<path d="M${cx - hw} ${hy - 6} Q${cx - hw} ${hy - hh} ${cx} ${hy - hh} Q${cx + hw} ${hy - hh} ${cx + hw} ${hy - 6} L${cx + hw * 0.94} ${hy + 8} Q${cx + hw * cheek} ${hy + hh * chin} ${cx} ${hy + hh * 0.92} Q${cx - hw * cheek} ${hy + hh * chin} ${cx - hw * 0.94} ${hy + 8} Z" fill="${sk}"/>`);
-    // hair on top
-    const top = hy - hh;
-    const cap = (h, extra) => `<path d="M${cx - hw - 1} ${hy - 4} Q${cx - hw - 2} ${top - h} ${cx} ${top - h - 2} Q${cx + hw + 2} ${top - h} ${cx + hw + 1} ${hy - 4} Q${cx + hw * 0.7} ${top + 5} ${cx} ${top + 6} Q${cx - hw * 0.7} ${top + 5} ${cx - hw - 1} ${hy - 4} Z" fill="${hc}" ${extra || ''}/>`;
-    if (L.hair === 'buzz')
-        parts.push(cap(1, 'opacity="0.55"'));
-    else if (L.hair === 'short' || L.hair === 'curly' || L.hair === 'long' || L.hair === 'locs')
-        parts.push(cap(4));
-    else if (L.hair === 'fade')
-        parts.push(cap(5), `<path d="M${cx - hw} ${hy - 6} Q${cx - hw} ${top + 6} ${cx - hw * 0.4} ${top + 2}" stroke="${hc}" stroke-width="3" opacity="0.4" fill="none"/>`);
-    else if (L.hair === 'flat')
-        parts.push(`<rect x="${cx - hw + 1}" y="${top - 9}" width="${hw * 2 - 2}" height="15" rx="3" fill="${hc}"/>`);
-    else if (L.hair === 'mohawk')
-        parts.push(cap(1, 'opacity="0.4"'), `<path d="M${cx - 6} ${top + 6} Q${cx - 8} ${top - 8} ${cx} ${top - 11} Q${cx + 8} ${top - 8} ${cx + 6} ${top + 6} Z" fill="${hc}"/>`);
-    else if (L.hair === 'twists') {
-        parts.push(cap(4));
-        for (let i = 0; i < 7; i++)
-            parts.push(`<circle cx="${cx - hw + 4 + i * (hw * 2 - 8) / 6}" cy="${top - 2 + (i % 2) * 2}" r="4" fill="${hc}"/>`);
+    const mood = p.morale >= 65 ? 1 : p.morale < 40 ? -1 : 0, temper = p.pers ? p.pers.temper : 50;
+    const num = p.jn != null && p.jn !== '' ? String(p.jn) : '';
+    const key = [p.tid || p.id, t.c1, t.c2, mood, temper >= 72 ? 1 : 0, num, p.age >= 35 ? 2 : p.age >= 32 ? 1 : 0, Math.floor((p.age || 25) / 3), L.hair, L.beard, L.skin].join('|');
+    let url = _HSC.get(key);
+    if (!url) {
+        const svg = HD.player({ seed: (p.tid || p.id) | 0, L, age: p.age, morale: p.morale, temper, num, c1: t.c1, c2: t.c2, label: 'Illustrated headshot of ' + esc(p.name) });
+        url = URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml' }));
+        _HSC.set(key, url);
     }
-    else if (L.hair === 'braids') {
-        parts.push(cap(3));
-        for (let i = -2; i <= 2; i++)
-            parts.push(`<path d="M${cx + i * hw * 0.32} ${top - 1} L${cx + i * hw * 0.4} ${hy - 10}" stroke="${shadeHexF(hc, 1.6)}" stroke-width="1.2" opacity="0.5"/>`);
-    }
-    else if (L.hair === 'afro')
-        parts.push(`<ellipse cx="${cx}" cy="${top + 2}" rx="${hw + 9}" ry="12" fill="${hc}"/>`);
-    else if (L.hair === 'bald')
-        parts.push(`<ellipse cx="${cx - 6}" cy="${top + 8}" rx="7" ry="3" fill="#fff" opacity="0.18"/>`);
-    if (L.hair === 'curly')
-        for (let i = 0; i < 6; i++)
-            parts.push(`<circle cx="${cx - hw + 5 + i * (hw * 2 - 10) / 5}" cy="${top + 1}" r="3.4" fill="${hc}"/>`);
-    // brows, eyes, nose, mouth: shapes vary by player
-    const sd = (p.tid || p.id) | 0, q = k => lh(sd, 900 + k);
-    const ey = hy - 3 + (q(1) - 0.5) * 3, eg = 8.6 * L.eyeGap, eyW = 3.6 + q(2) * 1.4, eyH = 1.9 + q(3) * 1.1, eTilt = (q(4) - 0.5) * 1.6;
-    const browC = L.grey > 0.4 ? '#7a7a7a' : shadeHexF(L.hairC, 0.85), bt = 1.6 + 1.8 * (L.brow - 0.7) / 0.6, tilt = angry ? 2.4 : mood > 0 ? -0.6 : 0, arch = q(5) * 2.2;
-    for (const sg of [-1, 1]) {
-        const x0 = cx + sg * (eg + 5.5), x1 = cx + sg * (eg - 4.5), by = ey - 5.8 - q(6) * 1.2;
-        parts.push(`<path d="M${x0} ${by + 0.6 - tilt * 0.2} Q${(x0 + x1) / 2} ${by - arch - 0.4} ${x1} ${by + tilt}" stroke="${browC}" stroke-width="${bt.toFixed(2)}" stroke-linecap="round" fill="none"/>`);
-        const ex = cx + sg * eg, eyeP = `M${ex - eyW} ${ey + sg * eTilt * 0.3} Q${ex} ${ey - eyH * 1.25} ${ex + eyW} ${ey - sg * eTilt * 0.3} Q${ex} ${ey + eyH} ${ex - eyW} ${ey + sg * eTilt * 0.3} Z`;
-        parts.push(`<path d="${eyeP}" fill="#f2ede4"/><circle cx="${ex + 0.4}" cy="${ey - 0.1}" r="${Math.min(eyH * 1.05, 2.1).toFixed(2)}" fill="${q(7) < 0.8 || L.skinI >= 3 ? '#2b1a10' : q(8) < 0.5 ? '#3d6b8a' : '#5a6b3a'}"/><circle cx="${ex + 1}" cy="${ey - 0.7}" r="0.55" fill="#fff" opacity="0.8"/><path d="M${ex - eyW - 0.4} ${ey + sg * eTilt * 0.3 + 0.2} Q${ex} ${ey - eyH * 1.35} ${ex + eyW + 0.4} ${ey - sg * eTilt * 0.3}" stroke="#1d130e" stroke-width="1.05" fill="none" stroke-linecap="round"/>`);
-        if (p.age >= 31)
-            parts.push(`<path d="M${ex + sg * (eyW + 1)} ${ey + 1} l${sg * 2.5} 1.2" stroke="rgba(0,0,0,0.18)" stroke-width="0.8"/>`);
-        if (L.eyeBlack)
-            parts.push(`<path d="M${ex - 4.6} ${ey + 5} L${ex + 4.6} ${ey + 5.6} L${ex + 3.4} ${ey + 8.3} L${ex - 4} ${ey + 7.5} Z" fill="#141518" opacity="0.92"/>`);
-    }
-    // cheek and jaw shading, lit from the upper left
-    parts.push(`<path d="M${cx + hw * 0.92} ${hy + 4} Q${cx + hw * 0.75} ${hy + hh * 0.8} ${cx + 4} ${hy + hh * 0.9}" stroke="rgba(0,0,0,0.13)" stroke-width="5" fill="none" stroke-linecap="round"/>`);
-    parts.push(`<ellipse cx="${cx - hw * 0.45}" cy="${ey + 9}" rx="5" ry="3" fill="#ffffff" opacity="0.04"/>`);
-    // nose: bridge shadow, tip and nostrils
-    const nw = 3.2 * L.nose + (L.skinI >= 4 ? 1 : 0), nl = 11 + q(9) * 4;
-    parts.push(`<path d="M${cx + 1.5} ${ey + 1} Q${cx + 2.6} ${ey + nl * 0.6} ${cx + nw * 0.7} ${ey + nl - 1}" stroke="${skD}" stroke-width="1.6" fill="none" stroke-linecap="round"/>`);
-    parts.push(`<path d="M${cx - nw} ${ey + nl} Q${cx - nw - 1} ${ey + nl + 2.6} ${cx - nw * 0.4} ${ey + nl + 2.6} Q${cx} ${ey + nl + 3.6} ${cx + nw * 0.4} ${ey + nl + 2.6} Q${cx + nw + 1} ${ey + nl + 2.6} ${cx + nw} ${ey + nl}" stroke="${shadeHexF(sk, 0.66)}" stroke-width="1.3" fill="none" stroke-linecap="round"/>`);
-    // mouth with lips; corners follow his morale
-    const my = ey + nl + 8.5 + q(10) * 2, mw = 6.2 + q(11) * 3 + (L.jaw - 1) * 4, lipC = mix(shadeHexF(sk, 0.7), '#9b4b44', L.skinI >= 4 ? 0.15 : 0.35), lipT = 1.6 + q(12) * 1.8 + (L.skinI >= 4 ? 0.8 : 0);
-    const cy2 = my - mood * 1.6;
-    parts.push(`<path d="M${cx - mw} ${cy2} Q${cx - mw * 0.4} ${my - lipT * 0.8} ${cx} ${my - lipT * 0.45} Q${cx + mw * 0.4} ${my - lipT * 0.8} ${cx + mw} ${cy2} Q${cx} ${my + lipT * 1.2 + mood * 1.2} ${cx - mw} ${cy2} Z" fill="${lipC}"/>`);
-    parts.push(`<path d="M${cx - mw} ${cy2} Q${cx} ${my + mood * 2.2} ${cx + mw} ${cy2}" stroke="#3a1c16" stroke-width="1.1" fill="none" stroke-linecap="round"/>`);
-    if (mood > 0 && q(13) < 0.6)
-        parts.push(`<path d="M${cx - mw * 0.7} ${my + 0.2} Q${cx} ${my + 2.6} ${cx + mw * 0.7} ${my + 0.2} Z" fill="#f4efe6"/>`);
-    // facial hair
-    const bc = hc;
-    if (L.beard === 'stubble')
-        parts.push(`<path d="M${cx - hw * 0.92} ${hy + 6} Q${cx - hw * 0.7} ${hy + hh * 0.85} ${cx} ${hy + hh * 0.9} Q${cx + hw * 0.7} ${hy + hh * 0.85} ${cx + hw * 0.92} ${hy + 6} Q${cx + hw * 0.5} ${my - 3} ${cx} ${my - 4} Q${cx - hw * 0.5} ${my - 3} ${cx - hw * 0.92} ${hy + 6} Z" fill="${bc}" opacity="0.28"/>`);
-    else if (L.beard === 'full')
-        parts.push(`<path d="M${cx - hw * 0.95} ${hy + 2} Q${cx - hw * 0.8} ${hy + hh * 0.95} ${cx} ${hy + hh + 3} Q${cx + hw * 0.8} ${hy + hh * 0.95} ${cx + hw * 0.95} ${hy + 2} Q${cx + hw * 0.55} ${my - 1} ${cx + 9} ${my + 2} Q${cx} ${my + 5} ${cx - 9} ${my + 2} Q${cx - hw * 0.55} ${my - 1} ${cx - hw * 0.95} ${hy + 2} Z" fill="${bc}"/><path d="M${cx - 9} ${my - 3} Q${cx} ${my - 6} ${cx + 9} ${my - 3}" stroke="${bc}" stroke-width="3" fill="none"/>`);
-    else if (L.beard === 'goatee')
-        parts.push(`<path d="M${cx - 9} ${my - 3} Q${cx} ${my - 6} ${cx + 9} ${my - 3}" stroke="${bc}" stroke-width="2.6" fill="none"/><path d="M${cx - 6} ${my + 3} Q${cx} ${my + 13} ${cx + 6} ${my + 3} Z" fill="${bc}"/>`);
-    else if (L.beard === 'mustache')
-        parts.push(`<path d="M${cx - 9} ${my - 3} Q${cx} ${my - 7} ${cx + 9} ${my - 3}" stroke="${bc}" stroke-width="3.2" fill="none" stroke-linecap="round"/>`);
-    else if (L.beard === 'chin')
-        parts.push(`<path d="M${cx - hw * 0.6} ${hy + hh * 0.6} Q${cx} ${hy + hh + 4} ${cx + hw * 0.6} ${hy + hh * 0.6}" stroke="${bc}" stroke-width="3.5" fill="none"/>`);
-    if (p.age >= 33)
-        parts.push(`<path d="M${cx - 9} ${top + 10} Q${cx} ${top + 8} ${cx + 9} ${top + 10}" stroke="rgba(0,0,0,0.12)" stroke-width="1.2" fill="none"/>`);
-    parts.push('</g>');
-    return `<svg class="hshot" viewBox="0 0 ${W} ${W}" width="${size || 96}" height="${size || 96}" role="img" aria-label="Illustrated headshot of ${esc(p.name)}">${parts.join('')}</svg>`;
+    const s = size || 96;
+    return `<img class="hshot" src="${url}" width="${s}" height="${s}" alt="Illustrated headshot of ${esc(p.name)}">`;
 }
 
 // between plays: everyone jogs from where the last play ended back to the new line and lines up in formation
@@ -20585,7 +21422,7 @@ function legOverview() {
     const n = k => car.filter(k).length;
     const sc = legacyScore();
     const stat = (v, l) => `<div><dt>${l}</dt><dd>${v}</dd></div>`;
-    const hero = `<section class="card leghero">${c.img ? `<img class="cport" src="${c.img}" alt="">` : ''}<div class="lh-b"><p class="eyebrow">Head coach · since ${S.lg.start || (car[0] && car[0].y) || S.year}</p><h2 class="big">${esc(c.name || 'Coach')}</h2><p class="lh-t"><span class="chip gold">${legacyTier(sc)}</span> <span class="dim small">Legacy score ${sc}</span></p>
+    const hero = `<section class="card leghero">${c ? `<img class="cport" src="${coachImg()}" alt="">` : ''}<div class="lh-b"><p class="eyebrow">Head coach · since ${S.lg.start || (car[0] && car[0].y) || S.year}</p><h2 class="big">${esc(c.name || 'Coach')}</h2><p class="lh-t"><span class="chip gold">${legacyTier(sc)}</span> <span class="dim small">Legacy score ${sc}</span></p>
      <dl class="kv lgkv">${stat(car.length, 'Seasons')}${stat(`${W}-${L}${T ? '-' + T : ''}`, 'Record')}${stat(W + L + T ? ((W + T / 2) / (W + L + T)).toFixed(3).replace(/^0/, '') : '—', 'Win pct')}${stat(n(x => x.el > 0), 'Playoff trips')}${stat(n(x => x.div), 'Division titles')}${stat(n(x => x.sb), 'Super Bowls')}</dl></div></section>`;
     const tro = [];
     for (const x of car.slice().reverse()) {
